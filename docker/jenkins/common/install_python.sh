@@ -146,4 +146,3 @@ pip install --no-cache-dir \
     scikit-image \
     tabulate \
     virtualenv
-
