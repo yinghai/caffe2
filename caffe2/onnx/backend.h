@@ -31,7 +31,9 @@ public:
 
   onnx::AttributeProto* AddRewritttenAttibute(const std::string& key) {
     auto tmp = rewritten_onnx_attrs_.emplace(key, onnx::AttributeProto());
-    return &tmp.first->second;
+    auto& attr = tmp.first->second;
+    attr.set_name(key);
+    return &attr;
   }
 
   ::google::protobuf::RepeatedPtrField<caffe2::Argument>

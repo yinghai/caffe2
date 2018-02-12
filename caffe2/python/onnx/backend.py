@@ -220,22 +220,23 @@ class Caffe2Backend(Backend):
                 for key, value in zip(node.input, inputs):
                     workspace.FeedBlob(key, value)
 
-            if 1:
-                cls._inplace_rewrite([node])
-                init_ops, ops2, _ = cls._onnx_node_to_caffe2_op(
-                    None, None, node, opset_version or cls._known_opset_version)
-                ops2 = init_ops + ops2
-                for op in ops2:
-                    op.device_option.CopyFrom(device_option)
-            ops = ops2
+            ops = []
             cbackend = C.Caffe2Backend()
             ops_str = cbackend.convert_node(node.SerializeToString(), opset_version or cls._known_opset_version)
-            #for s in ops_str:
-            #    op = caffe2_pb2.OperatorDef()
-            #    op.ParseFromString(s)
-            #    op.device_option.CopyFrom(device_option)
-            #    ops.append(op)
-            #print("\nC++:\n{}Python:\n{}".format(ops, ops2))
+            for s in ops_str:
+                op = caffe2_pb2.OperatorDef()
+                op.ParseFromString(s)
+                op.device_option.CopyFrom(device_option)
+                ops.append(op)
+            # For testing
+            # if 1:
+            #     cls._inplace_rewrite([node])
+            #     init_ops, ops2, _ = cls._onnx_node_to_caffe2_op(
+            #         None, None, node, opset_version or cls._known_opset_version)
+            #     ops2 = init_ops + ops2
+            #     for op in ops2:
+            #         op.device_option.CopyFrom(device_option)
+            # print("\nC++:\n{}\nPython:\n{}".format(ops, ops2))
             workspace.RunOperatorsOnce(ops)
             output_values = [workspace.FetchBlob(name) for name in node.output]
             return namedtupledict('Outputs', node.output)(*output_values)

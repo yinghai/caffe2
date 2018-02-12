@@ -106,10 +106,19 @@ void BuildOperator(
     const std::vector<std::string> &inputs,
     const std::vector<std::string> &outputs,
     const std::vector<caffe2::Argument>& args) {
+  c2_op->set_name("");
   c2_op->set_type(op_type);
-  std::copy(inputs.begin(), inputs.end(), c2_op->mutable_input()->begin());
-  std::copy(outputs.begin(), outputs.end(), c2_op->mutable_output()->begin());
-  std::copy(args.begin(), args.end(), c2_op->mutable_arg()->begin());
+  for (const auto& input: inputs) {
+    c2_op->add_input(input);
+  }
+  for (const auto& output: outputs) {
+    c2_op->add_output(output);
+  }
+  for (const auto& arg: args) {
+    auto* tmp = c2_op->add_arg();
+    assert(tmp);
+    tmp->CopyFrom(arg);
+  }
 }
 
 void BuildOperator(
@@ -586,7 +595,7 @@ Caffe2Ops Caffe2Backend::CreateSlice(const onnx::ModelProto &init_model,
   pos = args.find("ends");
   if (pos != args.end()) {
     for (auto i: pos->second->ints()) {
-      starts_vals.add_ints(i < 0 ? i - 1 : i);
+      ends_vals.add_ints(i < 0 ? i - 1 : i);
     }
     args.erase(pos);
   }
@@ -1045,6 +1054,13 @@ void Caffe2Backend::BuildTensorFillingOp(caffe2::OperatorDef *c2_op,
         "unrecognized tensor type: " +
         onnx::TensorProto::DataType_Name(onnx_tensor.data_type()));
   }
+
+  auto* c2_shape = c2_op->add_arg();
+  c2_shape->set_name("shape");
+  for(const auto d: onnx_tensor.dims()) {
+    c2_shape->add_ints(d);
+  }
+  c2_op->add_output(name);
 }
 
 }
