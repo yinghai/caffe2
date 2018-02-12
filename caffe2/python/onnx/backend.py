@@ -46,6 +46,8 @@ from caffe2.python.onnx.workspace import Workspace
 from caffe2.python.onnx.backend_rep import Caffe2Rep
 from caffe2.python.onnx.helper import dummy_name
 
+import caffe2.python._import_c_extension as C
+
 import warnings
 
 def force_unicode(s):
@@ -76,7 +78,6 @@ class OnnxAttributes(dict):
         for k, v in self.items():
             if kmap(k) != '':
                 yield caffe2.python.utils.MakeArgument(kmap(k), v)
-
 
 # TODO: Move this into ONNX main library
 def convertAttributeProto(onnx_arg):
@@ -219,12 +220,22 @@ class Caffe2Backend(Backend):
                 for key, value in zip(node.input, inputs):
                     workspace.FeedBlob(key, value)
 
-            cls._inplace_rewrite([node])
-            init_ops, ops, _ = cls._onnx_node_to_caffe2_op(
-                None, None, node, opset_version or cls._known_opset_version)
-            ops = init_ops + ops
-            for op in ops:
-                op.device_option.CopyFrom(device_option)
+            if 1:
+                cls._inplace_rewrite([node])
+                init_ops, ops2, _ = cls._onnx_node_to_caffe2_op(
+                    None, None, node, opset_version or cls._known_opset_version)
+                ops2 = init_ops + ops2
+                for op in ops2:
+                    op.device_option.CopyFrom(device_option)
+            ops = ops2
+            cbackend = C.Caffe2Backend()
+            ops_str = cbackend.convert_node(node.SerializeToString(), opset_version or cls._known_opset_version)
+            #for s in ops_str:
+            #    op = caffe2_pb2.OperatorDef()
+            #    op.ParseFromString(s)
+            #    op.device_option.CopyFrom(device_option)
+            #    ops.append(op)
+            #print("\nC++:\n{}Python:\n{}".format(ops, ops2))
             workspace.RunOperatorsOnce(ops)
             output_values = [workspace.FetchBlob(name) for name in node.output]
             return namedtupledict('Outputs', node.output)(*output_values)
