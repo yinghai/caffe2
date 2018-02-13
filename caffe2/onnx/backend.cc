@@ -431,8 +431,8 @@ Caffe2Ops Caffe2Backend::CreateGemm(const onnx::ModelProto &init_model,
   auto input_c = node.input(2);
   auto output = node.output(0);
 
-  auto alpha = onnx_node->attributes.get<int64_t>("alpha", 1.0);
-  auto beta = onnx_node->attributes.get<int64_t>("beta", 1.0);
+  auto alpha = onnx_node->attributes.get<float>("alpha", 1.0);
+  auto beta = onnx_node->attributes.get<float>("beta", 1.0);
   if (!AlmostEqual(alpha, 1)) {
      auto scaled_a = DummyName::NewDummyName();
      caffe2::Argument scale;
@@ -726,10 +726,24 @@ std::unordered_map<std::string, std::string> Caffe2Backend::InplaceRewrite(
       input = LookUpWithDefault(renamed, input, input);
     }
 
-    auto consumed_inputs =
-        OnnxAttributes(node)
-            .get<::google::protobuf::RepeatedPtrField<std::string>>(
-                "consumed_inputs");
+    // Get `consumed_inputs` attribute and remove it from node attributes
+    ::google::protobuf::RepeatedField<::google::protobuf::int64>
+        consumed_inputs;
+    int found_idx = -1;
+    for (int i = 0; i < node.attribute_size(); ++i) {
+      const auto& attr = node.attribute(i);
+      if (attr.name() == "consumed_inputs") {
+        consumed_inputs.CopyFrom(attr.ints());
+        found_idx = i;
+        break;
+      }
+    }
+    if (found_idx >= 0 && found_idx < node.attribute_size()) {
+      node.mutable_attribute(found_idx)->CopyFrom(
+          node.attribute(node.attribute_size() - 1));
+      node.mutable_attribute()->RemoveLast();
+    }
+
     std::set<int> output_indexes;
     for (int i = 0; i < node.output_size(); ++i) {
       output_indexes.insert(i);
@@ -738,7 +752,7 @@ std::unordered_map<std::string, std::string> Caffe2Backend::InplaceRewrite(
 
     int i = 0;
     for (const auto& consumed: consumed_inputs) {
-      if (consumed.empty()) {
+      if (!consumed) {
         ++i;
         continue;
       }
