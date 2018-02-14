@@ -739,8 +739,10 @@ std::unordered_map<std::string, std::string> Caffe2Backend::InplaceRewrite(
       }
     }
     if (found_idx >= 0 && found_idx < node.attribute_size()) {
-      node.mutable_attribute(found_idx)->CopyFrom(
-          node.attribute(node.attribute_size() - 1));
+      if (found_idx != node.attribute_size() - 1) {
+        node.mutable_attribute(found_idx)->CopyFrom(
+            node.attribute(node.attribute_size() - 1));
+      }
       node.mutable_attribute()->RemoveLast();
     }
 
@@ -918,10 +920,12 @@ void Caffe2Backend::OnnxToCaffe2(
       auto *init_net_tmp = include_initializers ? init_net : net;
       // For RNN operators, we rely on Python code to convert them for us, and we simply deserilize the string
       // This is hack and eventually we want to get rid of this to have one flow
-      const Caffe2Ops* c2ops = nullptr;
       if (kRNNOperators_.count(node.op_type())) {
         if (idx_extra < extras.size()) {
-          c2ops = &extras[idx_extra++];
+          const auto &c2ops = extras[idx_extra++];
+          init_net_tmp->mutable_op()->MergeFrom(c2ops.init_ops);
+          net->mutable_op()->MergeFrom(c2ops.ops);
+          net->mutable_external_input()->MergeFrom(c2ops.interface_blobs);
         } else {
           throw std::runtime_error(
               caffe2::MakeString("Don't know how to convert ", node.op_type(),
@@ -929,15 +933,12 @@ void Caffe2Backend::OnnxToCaffe2(
         }
       } else {
         auto onnx_node = OnnxNode(node);
-        auto ops_tmp = OnnxNodeToCaffe2Ops(init_model, pred_model, &onnx_node,
-                                    opset_version);
-        c2ops = &ops_tmp;
+        auto c2ops = OnnxNodeToCaffe2Ops(init_model, pred_model, &onnx_node,
+                                         opset_version);
+        init_net_tmp->mutable_op()->MergeFrom(c2ops.init_ops);
+        net->mutable_op()->MergeFrom(c2ops.ops);
+        net->mutable_external_input()->MergeFrom(c2ops.interface_blobs);
       }
-
-      assert(c2ops);
-      init_net_tmp->mutable_op()->MergeFrom(c2ops->init_ops);
-      net->mutable_op()->MergeFrom(c2ops->ops);
-      net->mutable_external_input()->MergeFrom(c2ops->interface_blobs);
     }
 
     for (const auto& value: model.graph().output()) {

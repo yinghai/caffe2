@@ -228,9 +228,9 @@ class Caffe2Backend(Backend):
                 op.ParseFromString(s)
                 op.device_option.CopyFrom(device_option)
                 ops.append(op)
+            cls._inplace_rewrite([node])
             # For testing
             # if 1:
-            #     cls._inplace_rewrite([node])
             #     init_ops, ops2, _ = cls._onnx_node_to_caffe2_op(
             #         None, None, node, opset_version or cls._known_opset_version)
             #     ops2 = init_ops + ops2
@@ -956,6 +956,10 @@ class Caffe2Backend(Backend):
         initializer of the predict_graph, "img" is not initalized. We don't have a check for this, since
         there is no way we can know which blob is the input of the predict_graph.
         '''
+        if 1:
+            cbackend =  C.Caffe2Backend()
+            rep = cbackend.prepare(model.SerializeToString(), device, []);
+            return rep
         super(Caffe2Backend, cls).prepare(model, device, **kwargs)
 
 

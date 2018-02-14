@@ -662,11 +662,11 @@ void addObjectMethods(py::module& m) {
       .def(py::init<>())
       .def("prepare",
            [](onnx_caffe2::Caffe2Backend &instance,
-              const py::bytes &onnx_model_str, const py::bytes &device,
-              const std::vector<onnx_caffe2::Caffe2Ops> &extras) -> py::object {
+              const py::bytes &onnx_model_str, const std::string &device,
+              const std::vector<onnx_caffe2::Caffe2Ops> &extras) {
              auto *rep = instance.Prepare(onnx_model_str.cast<std::string>(),
-                                          device.cast<std::string>(), extras);
-             return py::cast(rep);
+                                          device, extras);
+             return rep;
            })
       .def("convert_node",
            [](onnx_caffe2::Caffe2Backend &instance, const py::bytes &node_str,
