@@ -959,7 +959,15 @@ class Caffe2Backend(Backend):
         if 1:
             cbackend =  C.Caffe2Backend()
             rep = cbackend.prepare(model.SerializeToString(), device, []);
-            return rep
+            pred_net_str = rep.pred_net()
+            pn = caffe2_pb2.NetDef()
+            pn.ParseFromString(pred_net_str)
+            init_net_str = rep.init_net()
+            inn = caffe2_pb2.NetDef()
+            inn.ParseFromString(init_net_str)
+            print("init_net: \n{}".format(inn))
+            print("pred_net: \n{}".format(pn))
+            #return rep
         super(Caffe2Backend, cls).prepare(model, device, **kwargs)
 
 
@@ -998,10 +1006,12 @@ class Caffe2Backend(Backend):
 
         uninitialized = [value_info.name for value_info in model.graph.input if value_info.name not in initialized]
 
-        init_net, predict_net = cls._onnx_model_to_caffe2_net(model, device, opset_version, False)
+        init_net, predict_net = cls._onnx_model_to_caffe2_net(model, device, opset_version, True)
 
+        print("init_net_python: \n{}".format(init_net))
+        print("pred_net_python: \n{}".format(predict_net))
         retval = Caffe2Rep(init_net, predict_net, ws, uninitialized)
-        return retval
+        return rep
 
     @classmethod
     # TODO: This method needs a refactor for clarity

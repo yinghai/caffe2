@@ -942,7 +942,7 @@ void Caffe2Backend::OnnxToCaffe2(
     }
 
     for (const auto& value: model.graph().output()) {
-      net->add_external_input(value.name());
+      net->add_external_output(value.name());
     }
     for (const auto& value: model.graph().input()) {
       net->add_external_input(value.name());
@@ -998,7 +998,8 @@ Caffe2Backend::Prepare(const std::string &onnx_model_str,
 void Caffe2Backend::BuildTensorFillingOp(caffe2::OperatorDef *c2_op,
                                          const onnx::TensorProto &onnx_tensor,
                                          const std::string &name) {
-  assert(!(onnx_tensor.name().empty() && name.empty()));
+  auto fill_name = name.empty() ? onnx_tensor.name() : name;
+  CAFFE_ENFORCE(!fill_name.empty());
 
   if (onnx_tensor.has_segment()) {
     throw std::runtime_error("Currently not supporting loading segments.");
@@ -1075,7 +1076,7 @@ void Caffe2Backend::BuildTensorFillingOp(caffe2::OperatorDef *c2_op,
   for(const auto d: onnx_tensor.dims()) {
     c2_shape->add_ints(d);
   }
-  c2_op->add_output(name);
+  c2_op->add_output(fill_name);
 }
 
 }
