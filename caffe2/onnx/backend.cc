@@ -67,7 +67,6 @@ caffe2::DeviceOption GetDeviceOption(const onnx::Device &onnx_device) {
   return d;
 }
 
-// Note: if we design the API a bit, we can avoid the two copies
 onnx::ModelProto OptimizeOnnx(const onnx::ModelProto &input, bool init) {
   std::vector<std::string> passes{"fuse_consecutive_transposes",
                                   "eliminate_nop_transpose",
@@ -100,6 +99,15 @@ const onnx::OpSchema &GetOnnxSchema(const std::string &key) {
   return *schema;
 }
 
+void UpdateNames(const caffe2::OperatorDef& op) {
+  for (const auto& n : op.input()) {
+    DummyName::AddName(n);
+  }
+  for (const auto& n : op.output()) {
+    DummyName::AddName(n);
+  }
+}
+
 void BuildOperator(
     caffe2::OperatorDef* c2_op,
     const std::string &op_type,
@@ -128,6 +136,32 @@ void BuildOperator(
     const std::vector<std::string> &outputs) {
   std::vector<caffe2::Argument> empty;
   BuildOperator(c2_op, op_type, inputs, outputs, empty);
+}
+
+void CopyOnnxAttrValueToCaffe2Arg(
+    caffe2::Argument* arg,
+    const onnx::AttributeProto& attr) {
+  if (attr.has_f()) {
+    arg->set_f(attr.f());
+  } else if (attr.has_i()) {
+    arg->set_i(attr.i());
+  } else if (attr.has_s()) {
+    arg->set_s(attr.s());
+  } else if (attr.has_t()) {
+    // For proto, we convert it to serialized string
+    std::string buffer;
+    attr.t().SerializeToString(&buffer);
+    arg->set_s(buffer);
+  } else if (attr.floats_size()) {
+    arg->mutable_floats()->CopyFrom(attr.floats());
+  } else if (attr.ints_size()) {
+    arg->mutable_ints()->CopyFrom(attr.ints());
+  } else if (attr.strings_size()) {
+    arg->mutable_strings()->CopyFrom(attr.strings());
+  } else {
+    throw std::runtime_error(
+        caffe2::MakeString("Unsupported ONNX attribute: ", attr.name()));
+  }
 }
 } // namespace detail
 
@@ -206,27 +240,16 @@ OnnxAttributes::OnnxAttrToCaffe2Arg(
                            : (*kv.second);
     auto* arg = args.Add();
     arg->set_name(mapper(attr.name()));
-
-    if (attr.has_f()) {
-      arg->set_f(attr.f());
-    } else if (attr.has_i()) {
-      arg->set_i(attr.i());
-    } else if (attr.has_s()) {
-      arg->set_s(attr.s());
-    } else if (attr.has_t()) {
-      // For proto, we convert it to serialized string
-      std::string buffer;
-      attr.t().SerializeToString(&buffer);
-      arg->set_s(buffer);
-    } else if (attr.floats_size()) {
-      arg->mutable_floats()->CopyFrom(attr.floats());
-    } else if (attr.ints_size()) {
-      arg->mutable_ints()->CopyFrom(attr.ints());
-    } else if (attr.strings_size()) {
-      arg->mutable_strings()->CopyFrom(attr.strings());
-    } else {
-      throw std::runtime_error(
-          caffe2::MakeString("Unsupported ONNX attribute: ", attr.name()));
+    CopyOnnxAttrValueToCaffe2Arg(arg, attr);
+  }
+  for (const auto& kv:rewritten_onnx_attrs_) {
+    // If rewritten attribute doesn't appear in the original attributes, this is
+    // a newlly added one and we need to add this to argument too
+    if (not onnx_attrs_.count(kv.first)) {
+      const auto& attr = kv.second;
+      auto* arg = args.Add();
+      arg->set_name(mapper(attr.name()));
+      CopyOnnxAttrValueToCaffe2Arg(arg, attr);
     }
   }
 
@@ -349,7 +372,7 @@ Caffe2Ops Caffe2Backend::CreateConvePoolOpBase(const onnx::ModelProto &init_mode
   const auto& node = onnx_node->node;
   auto& attributes = onnx_node->attributes;
   if (node.op_type().find("Global") == 0) {
-    auto* attr = attributes.AddRewritttenAttibute("global_pooling");
+    auto* attr = attributes.AddRewrittenAttibute("global_pooling");
     attr->set_i(1);
   }
 
@@ -364,7 +387,7 @@ Caffe2Ops Caffe2Backend::CreateConvePoolOpBase(const onnx::ModelProto &init_mode
                 "pads");
     if (kernel_shape.size() == pads.size()) {
       // Caffe2 requires pads to be twice the size of kernels.
-      auto* attr = attributes.AddRewritttenAttibute("pads");
+      auto* attr = attributes.AddRewrittenAttibute("pads");
       attr->mutable_ints()->CopyFrom(pads);
       attr->mutable_ints()->MergeFrom(pads);
     }
@@ -519,7 +542,7 @@ Caffe2Ops Caffe2Backend::CreatePad(const onnx::ModelProto &init_model,
   }
 
   // rewrite the padding info
-  auto* attr = attributes.AddRewritttenAttibute(pad_name);
+  auto* attr = attributes.AddRewrittenAttibute(pad_name);
   attr->add_ints(pads.Get(2));
   attr->add_ints(pads.Get(3));
   attr->add_ints(pads.Get(6));
@@ -918,13 +941,25 @@ void Caffe2Backend::OnnxToCaffe2(
     net->mutable_device_option()->CopyFrom(device_option);
     for (const auto &node : model.graph().node()) {
       auto *init_net_tmp = include_initializers ? init_net : net;
-      // For RNN operators, we rely on Python code to convert them for us, and we simply deserilize the string
-      // This is hack and eventually we want to get rid of this to have one flow
+      // For RNN operators, we rely on Python code to convert them for us, and
+      // we simply deserilize the string. This is hack and eventually we want to
+      // get rid of this to have one flow. Note that we need to update the dummy
+      // name generator to avoid having duplicated names between Python and C++
+      // generated dummies
       if (kRNNOperators_.count(node.op_type())) {
         if (idx_extra < extras.size()) {
           const auto &c2ops = extras[idx_extra++];
+          for (const auto& op: c2ops.init_ops) {
+            UpdateNames(op);
+          }
           init_net_tmp->mutable_op()->MergeFrom(c2ops.init_ops);
+          for (const auto& op: c2ops.ops) {
+            UpdateNames(op);
+          }
           net->mutable_op()->MergeFrom(c2ops.ops);
+          for (const auto& input: c2ops.interface_blobs) {
+            DummyName::AddName(input);
+          }
           net->mutable_external_input()->MergeFrom(c2ops.interface_blobs);
         } else {
           throw std::runtime_error(
@@ -992,6 +1027,19 @@ Caffe2Backend::Prepare(const std::string &onnx_model_str,
   //TODO: avoid extra copy by directly feed initialiers to backend blobs
   OnnxToCaffe2(&rep->init_net(), &rep->pred_net(), onnx_model, device,
                opset_version, true, extras);
+
+  // Get a list of uninitialized inputs to help with the inference setup
+  auto& uninitialized_inputs = rep->uninitialized_inputs();
+  std::unordered_set<std::string> initialized_inputs;
+  for (const auto& tp: onnx_model.graph().initializer()) {
+    initialized_inputs.emplace(tp.name());
+  }
+  for (const auto& input: onnx_model.graph().input()) {
+    if (not initialized_inputs.count(input.name())) {
+      uninitialized_inputs.emplace_back(input.name());
+    }
+  }
+
   return rep;
 }
 

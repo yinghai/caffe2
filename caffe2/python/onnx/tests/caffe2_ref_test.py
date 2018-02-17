@@ -68,7 +68,7 @@ class TestCaffe2Basic(TestCase):
             outputs=[make_tensor_value_info("X", onnx.TensorProto.FLOAT, [3, 2])])
         c2_rep = c2.prepare(make_model(graph_def))
         output = c2_rep.run({"X": X})
-        np.testing.assert_almost_equal(output["X"], Y_ref)
+        np.testing.assert_almost_equal(output.X, Y_ref)
 
     def test_relu_graph(self):
         X = np.random.randn(3, 2).astype(np.float32)
@@ -86,8 +86,8 @@ class TestCaffe2Basic(TestCase):
             inputs=[make_tensor_value_info("X", onnx.TensorProto.FLOAT, [3, 2])],
             outputs=[make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [3, 2])])
         c2_rep = c2.prepare(make_model(graph_def))
-        output = c2_rep.run([X])
-        np.testing.assert_almost_equal(output["Y"], Y_ref)
+        output = c2_rep.run(X)
+        np.testing.assert_almost_equal(output.Y, Y_ref)
 
     def test_initializer(self):
         X = np.array([[1, 2], [3, 4]]).astype(np.float32)
@@ -252,9 +252,8 @@ class TestCaffe2Basic(TestCase):
             value_info={
                 'X': (onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[X.dtype], X.shape)
             })
-        Y = c2.run_model(onnx_model, inputs=[X])
-        _, Yv = Y.popitem()
-        np.testing.assert_almost_equal(Yv, X[:, 1:2, :])
+        Y, = c2.run_model(onnx_model, inputs=[X])
+        np.testing.assert_almost_equal(Y, X[:, 1:2, :])
 
 
 class TestCaffe2End2End(TestCase):
@@ -295,7 +294,6 @@ class TestCaffe2End2End(TestCase):
             value_info=json.load(open(os.path.join(model_dir, 'value_info.json'))))
         c2_ir = c2.prepare(model)
         onnx_outputs = c2_ir.run(inputs)
-        print("XX: {}".format(c2_outputs.__class__))
         self.assertSameOutputs(c2_outputs, onnx_outputs, decimal=decimal)
 
     def _download(self, model):

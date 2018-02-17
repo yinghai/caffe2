@@ -613,16 +613,16 @@ void addObjectMethods(py::module& m) {
       .def_property_readonly("required", &OpSchema::Argument::is_required);
 
   py::class_<onnx_caffe2::Caffe2Ops>(m, "Caffe2Ops")
-      .def(py::init([](const std::vector<py::bytes> &ops,
-                       const std::vector<py::bytes> &init_ops,
-                       const std::vector<py::bytes> &interface_blobs) {
+      .def(py::init([](const std::vector<py::bytes>& init_ops,
+                       const std::vector<py::bytes>& ops,
+                       const std::vector<py::bytes>& interface_blobs) {
         auto* c2ops = new onnx_caffe2::Caffe2Ops();
-        for (const auto &s : ops) {
-          ParseProtobufFromLargeString(s.cast<std::string>(), c2ops->ops.Add());
-        }
         for (const auto &s : init_ops) {
           ParseProtobufFromLargeString(s.cast<std::string>(),
                                        c2ops->init_ops.Add());
+        }
+        for (const auto& s : ops) {
+          ParseProtobufFromLargeString(s.cast<std::string>(), c2ops->ops.Add());
         }
         for (const auto &s : interface_blobs) {
           auto *tmp = c2ops->interface_blobs.Add();
@@ -651,10 +651,33 @@ void addObjectMethods(py::module& m) {
             return py::bytes(out);
           })
       .def(
+          "external_outputs",
+          [](onnx_caffe2::Caffe2BackendRep& instance) {
+            std::vector<std::string> outputs;
+            for (const auto& o : instance.pred_net().external_output()) {
+              outputs.emplace_back(o);
+            }
+            return outputs;
+          })
+      .def(
+          "external_inputs",
+          [](onnx_caffe2::Caffe2BackendRep& instance) {
+            std::vector<std::string> inputs;
+            for (const auto& o : instance.pred_net().external_input()) {
+              inputs.emplace_back(o);
+            }
+            return inputs;
+          })
+      .def(
+          "uninitialized_inputs",
+          [](onnx_caffe2::Caffe2BackendRep& instance) {
+            return instance.uninitialized_inputs();
+          })
+      .def(
           "run",
           [](onnx_caffe2::Caffe2BackendRep& instance,
              std::map<std::string, py::object> inputs)
-              -> std::map<std::string, py::object> {
+              -> std::vector<py::object> {
             Predictor::TensorMap tensors;
             std::map<std::string, TensorCPU> tensors_data{};
             for (const auto pair : inputs) {
@@ -670,19 +693,12 @@ void addObjectMethods(py::module& m) {
               tensors.insert(std::make_pair(name, &tensors_data[name]));
             }
 
-            std::vector<std::string> outputs;
-            for (const auto& o: instance.pred_net().external_output()) {
-              outputs.emplace_back(o);
-            }
 
             std::vector<TensorCPU*> out;
             instance.RunMap(tensors, &out);
-            CAFFE_ENFORCE(outputs.size() == out.size());
-            std::map<std::string, py::object> pyout;
-            int i = 0;
+            std::vector<py::object> pyout;
             for (auto t : out) {
-              pyout.emplace(
-                  outputs[i],
+              pyout.push_back(
                   TensorFetcher<CPUContext>().FetchTensor(*t, true).obj);
             }
             return pyout;
@@ -691,7 +707,7 @@ void addObjectMethods(py::module& m) {
           "run",
           [](onnx_caffe2::Caffe2BackendRep& instance,
              std::vector<py::object> inputs)
-              -> std::map<std::string, py::object> {
+              -> std::vector<py::object> {
             Predictor::TensorVector tensors;
             std::vector<TensorCPU> tensors_data(inputs.size());
             for (auto i = 0; i < inputs.size(); ++i) {
@@ -706,17 +722,10 @@ void addObjectMethods(py::module& m) {
               tensors.push_back(&(tensors_data[i]));
             }
             std::vector<TensorCPU*> out;
-            std::vector<std::string> outputs;
-            for (const auto& o: instance.pred_net().external_output()) {
-              outputs.emplace_back(o);
-            }
             instance.Run(tensors, &out);
-            CAFFE_ENFORCE(outputs.size() == out.size());
-            std::map<std::string, py::object> pyout;
-            int i = 0;
+            std::vector<py::object> pyout;
             for (auto t : out) {
-              pyout.emplace(
-                  outputs[i],
+              pyout.push_back(
                   TensorFetcher<CPUContext>().FetchTensor(*t, true).obj);
             }
             return pyout;

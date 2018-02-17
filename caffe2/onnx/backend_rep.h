@@ -4,6 +4,8 @@
 #include "caffe2/proto/caffe2.pb.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace onnx_caffe2 {
 class Caffe2BackendRep {
@@ -21,6 +23,9 @@ class Caffe2BackendRep {
   caffe2::NetDef& pred_net() {
     return pred_net_;
   }
+  std::vector<std::string>& uninitialized_inputs() {
+    return uninitialized_inputs_;
+  }
 
   const caffe2::NetDef& init_net() const {
     return init_net_;
@@ -28,12 +33,16 @@ class Caffe2BackendRep {
   const caffe2::NetDef& pred_net() const {
     return pred_net_;
   }
+  const std::vector<std::string>& uninitialized_inputs() const {
+    return uninitialized_inputs_;
+  }
 
  private:
   void CheckInit();
 
   caffe2::NetDef init_net_;
   caffe2::NetDef pred_net_;
+  std::vector<std::string> uninitialized_inputs_;
   std::unique_ptr<caffe2::Predictor> predictor_{nullptr};
 };
 } // namespace onnx_caffe2

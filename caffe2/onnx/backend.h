@@ -14,8 +14,8 @@
 namespace onnx_caffe2 {
 
 struct Caffe2Ops {
-  ::google::protobuf::RepeatedPtrField<caffe2::OperatorDef> ops;
   ::google::protobuf::RepeatedPtrField<caffe2::OperatorDef> init_ops;
+  ::google::protobuf::RepeatedPtrField<caffe2::OperatorDef> ops;
   ::google::protobuf::RepeatedPtrField<std::string> interface_blobs;
 };
 
@@ -29,7 +29,7 @@ public:
     return onnx_attrs_.count(key);
   }
 
-  onnx::AttributeProto* AddRewritttenAttibute(const std::string& key) {
+  onnx::AttributeProto* AddRewrittenAttibute(const std::string& key) {
     auto tmp = rewritten_onnx_attrs_.emplace(key, onnx::AttributeProto());
     auto& attr = tmp.first->second;
     attr.set_name(key);
