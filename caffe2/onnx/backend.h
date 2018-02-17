@@ -154,6 +154,13 @@ private:
                         const onnx::ModelProto &pred_model, OnnxNode *onnx_node,
                         int opset_version);
 
+  Caffe2Ops CreateSqrt(const onnx::ModelProto &init_model,
+                        const onnx::ModelProto &pred_model, OnnxNode *onnx_node,
+                        int opset_version);
+
+  Caffe2Ops CreateReciprocal(const onnx::ModelProto &init_model,
+                        const onnx::ModelProto &pred_model, OnnxNode *onnx_node,
+                        int opset_version);
 
   const static std::unordered_set<std::string> kRNNOperators_;
   const static std::unordered_map<std::string, int> kBrokenOperators_;

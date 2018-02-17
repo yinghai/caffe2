@@ -313,7 +313,9 @@ const std::unordered_map<std::string, Caffe2Backend::SpecialOpConverter>
         {"Pad", &Caffe2Backend::CreatePad},
         {"Concat", &Caffe2Backend::CreateConcat},
         {"LogSoftmax", &Caffe2Backend::CreateLogSoftmax},
-        {"Slice", &Caffe2Backend::CreateSlice}};
+        {"Slice", &Caffe2Backend::CreateSlice},
+        {"Sqrt", &Caffe2Backend::CreateSqrt},
+        {"Reciprocal", &Caffe2Backend::CreateReciprocal}};
 
 //============================
 // Special Operator Converters
@@ -409,9 +411,51 @@ Caffe2Ops Caffe2Backend::CreateReshape(const onnx::ModelProto &init_model,
   return c2_op;
 }
 
-Caffe2Ops Caffe2Backend::CreateGather(const onnx::ModelProto &init_model,
-                                       const onnx::ModelProto &pred_model,
-                                       OnnxNode *onnx_node, int opset_version) {
+Caffe2Ops Caffe2Backend::CreateSqrt(
+    const onnx::ModelProto& init_model,
+    const onnx::ModelProto& pred_model,
+    OnnxNode* onnx_node,
+    int opset_version) {
+  const auto& node = onnx_node->node;
+  if (node.input_size() != 1 or node.output_size() != 1) {
+    throw std::runtime_error("Caffe2 Sqrt should have 1 input and 1 output");
+  }
+
+  Caffe2Ops ret;
+  auto *c2_op = ret.ops.Add();
+
+  caffe2::Argument exponent;
+  exponent.set_name("exponent");
+  exponent.set_f(0.5);
+  BuildOperator(c2_op, "Pow", {node.input(0)}, {node.output(0)}, {exponent});
+  return ret;
+}
+
+Caffe2Ops Caffe2Backend::CreateReciprocal(
+    const onnx::ModelProto& init_model,
+    const onnx::ModelProto& pred_model,
+    OnnxNode* onnx_node,
+    int opset_version) {
+  const auto& node = onnx_node->node;
+  if (node.input_size() != 1 or node.output_size() != 1) {
+    throw std::runtime_error("Caffe2 Reciprocal should have 1 input and 1 output");
+  }
+
+  Caffe2Ops ret;
+  auto *c2_op = ret.ops.Add();
+
+  caffe2::Argument exponent;
+  exponent.set_name("exponent");
+  exponent.set_f(-1.0);
+  BuildOperator(c2_op, "Pow", {node.input(0)}, {node.output(0)}, {exponent});
+  return ret;
+}
+
+Caffe2Ops Caffe2Backend::CreateGather(
+    const onnx::ModelProto& init_model,
+    const onnx::ModelProto& pred_model,
+    OnnxNode* onnx_node,
+    int opset_version) {
   const auto& node = onnx_node->node;
   if (node.input_size() < 2 or node.output_size() < 1) {
     throw std::runtime_error("Caffe2 Gather should have 2 inputs and 1 output");
