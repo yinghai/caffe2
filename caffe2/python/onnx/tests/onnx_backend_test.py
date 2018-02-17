@@ -32,12 +32,12 @@ import caffe2.python.onnx.backend as c2
 pytest_plugins = 'onnx.backend.test.report',
 
 backend_test = onnx.backend.test.BackendTest(c2, __name__)
-
-backend_test.exclude(r'(test_ceil|test_floor'  # Does not support Ceil and Floor.
-                     '|test_hardsigmoid|test_pow'  # Does not support Hardsigmoid and Pow.
-                     '|test_mean|test_hardmax)')  # Does not support Mean and Hardmax.
-
-# Skip vgg to speed up CI
+# Skip vgg to speed up CI, skip others because onnx-caffe2 does not support them yet.
+ci_blacklist = (r'(test_vgg19|test_vgg'  # Speed up CI.
+                '|test_ceil.*|test_floor.*'  # Does not support Ceil and Floor.
+                '|test_hardsigmoid.*|test_pow.*'  # Does not support Hardsigmoid and Pow.
+                '|test_mean.*|test_hardmax.*'  # Does not support Mean and Hardmax.
+                ')')
 if 'CI' in os.environ:
     backend_test.exclude(r'(test_vgg19|test_vgg)')
 

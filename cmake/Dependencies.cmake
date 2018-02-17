@@ -1,5 +1,6 @@
 # This list is required for static linking and exported to Caffe2Config.cmake
 set(Caffe2_DEPENDENCY_LIBS "")
+set(Caffe2_ONNX_LIBS "")
 set(Caffe2_CUDA_DEPENDENCY_LIBS "")
 set(Caffe2_PYTHON_DEPENDENCY_LIBS "")
 set(Caffe2_EXTERNAL_DEPENDENCIES "")
@@ -513,3 +514,19 @@ if (USE_ZSTD)
   add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/zstd/build/cmake)
   set_property(TARGET libzstd_static PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
+
+if (USE_ONNX)
+  SET(ONNX_NAMESPACE "onnx")
+  set(TEMP_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+  # We will build onnx as static libs and embed it directly into the binary.
+  set(BUILD_SHARED_LIBS OFF)
+  add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/onnx)
+  caffe2_include_directories(${ONNX_INCLUDE_DIRS})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DONNX_NAMESPACE=${ONNX_NAMESPACE}")
+  caffe_add_linker_flag(onnx ONNX_LINK)
+  list(APPEND Caffe2_DEPENDENCY_LIBS ${ONNX_LINK})
+  list(APPEND Caffe2_DEPENDENCY_LIBS onnx_proto)
+  # Recover the build shared libs option.
+  set(BUILD_SHARED_LIBS ${TEMP_BUILD_SHARED_LIBS})
+endif()
+
