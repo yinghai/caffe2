@@ -62,6 +62,12 @@ std::vector<TensorShape> FCShapeInference(
   return out;
 }
 
+std::vector<OnnxNodeProto> OnnxConversionForFC(
+      const OperatorDef& def,
+      const std::unordered_map<std::string, TensorShape>& input_type_shape) {
+  return onnx::OnnxExporter().CreateGemmNode(def, input_type_shape);
+}
+
 OpSchema::Cost CostInferenceForFC(
     const OperatorDef& def,
     const vector<TensorShape>& in) {
@@ -99,6 +105,8 @@ OPERATOR_SCHEMA(FC)
     .TensorInferenceFunction(std::bind(FCShapeInference, _1, _2, false))
     .CostInferenceFunction(
         OpSchema::CostInferenceFunctionType(CostInferenceForFC))
+    .OnnxConversionFunction(OpSchema::OnnxConversionFunctionType(
+        OnnxConversionForFC))
     .SetDoc(R"DOC(
 Computes the result of passing an input vector X into a fully
 connected layer with 2D weight matrix W and 1D bias vector b. That is,
@@ -142,7 +150,8 @@ will throw errors.
         "A tensor that is coerced into a 2D blob of size (KxN) "
         "containing fully connected weight matrix")
     .Input(2, "b", "1D blob containing bias vector")
-    .Output(0, "Y", "2D output tensor");
+    .Output(0, "Y", "2D output tensor")
+    .InheritOnnxSchema("Gemm");
 
 OPERATOR_SCHEMA(FCGradient).NumInputs(3).NumOutputs(2, 3);
 OPERATOR_SCHEMA(FCTransposedGradient).NumInputs(3).NumOutputs(2, 3);

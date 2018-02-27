@@ -3,6 +3,7 @@
 #include "helper.h"
 #include "caffe2/core/logging.h"
 #include "caffe2/core/operator.h"
+#include "caffe2/utils/map_utils.h"
 #include "onnx/optimizer/optimize.h"
 #include "onnx/defs/schema.h"
 #include "onnx/checker.h"
@@ -87,17 +88,6 @@ ModelProto OptimizeOnnx(const ModelProto &input, bool init) {
     passes.emplace_back("split_predict");
   }
   return ONNX_NAMESPACE::optimization::Optimize(input, passes);
-}
-
-template <class T, class U>
-U LookUpWithDefault(const std::unordered_map<T, U> &map, const T &key,
-                    const U &default_value) {
-  const auto it = map.find(key);
-  if (it == map.end()) {
-    return default_value;
-  } else {
-    return it->second;
-  }
 }
 
 const ONNX_NAMESPACE::OpSchema &GetOnnxSchema(const std::string &key) {
@@ -809,7 +799,7 @@ void Caffe2Backend::InplaceRewrite(GraphProto* graph) {
   auto* nodes = graph->mutable_node();
   auto renamed = InplaceRewrite(nodes);
   for (int i = 0; i < graph->output_size(); ++i) {
-    graph->mutable_output(i)->set_name(LookUpWithDefault(
+    graph->mutable_output(i)->set_name(caffe2::get_default(
         renamed, graph->output(i).name(), graph->output(i).name()));
   }
 }
@@ -822,7 +812,7 @@ std::unordered_map<std::string, std::string> Caffe2Backend::InplaceRewrite(
   std::unordered_map<std::string, std::string> renamed;
   for (auto& node: *nodes) {
     for (auto& input: *node.mutable_input()) {
-      input = LookUpWithDefault(renamed, input, input);
+      input = caffe2::get_default(renamed, input, input);
     }
 
     // Get `consumed_inputs` attribute and remove it from node attributes
@@ -874,7 +864,7 @@ std::unordered_map<std::string, std::string> Caffe2Backend::InplaceRewrite(
 
     for (auto idx: output_indexes) {
       auto name = node.output(idx);
-      node.set_output(idx, LookUpWithDefault(renamed, name, name));
+      node.set_output(idx, caffe2::get_default(renamed, name, name));
     }
   }
 
@@ -925,7 +915,7 @@ Caffe2Ops Caffe2Backend::CommonOnnxNodeToCaffe2Ops(
   c2_op->set_name(node.name());
 
   const auto onnx_op_type = node.op_type();
-  auto broken_version = LookUpWithDefault(
+  auto broken_version = caffe2::get_default(
       get_broken_operators(), onnx_op_type, std::numeric_limits<int>::max());
   if (broken_version <= opset_version) {
     throw std::runtime_error(
@@ -934,7 +924,7 @@ Caffe2Ops Caffe2Backend::CommonOnnxNodeToCaffe2Ops(
                            " (I only support prior to v", broken_version));
   }
   c2_op->set_type(
-      LookUpWithDefault(get_renamed_operators(), onnx_op_type, onnx_op_type));
+      caffe2::get_default(get_renamed_operators(), onnx_op_type, onnx_op_type));
   if (!IsOperator(c2_op->type())) {
     throw std::runtime_error(
         caffe2::MakeString("Don't know how to translate op ", onnx_op_type));

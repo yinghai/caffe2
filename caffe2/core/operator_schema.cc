@@ -212,6 +212,16 @@ OpSchema& OpSchema::TensorInferenceFunction(
   return *this;
 }
 
+OpSchema& OpSchema::OnnxConversionFunction(OnnxConversionFunctionType function) {
+  onnx_conversion_function_ = function;
+  return *this;
+}
+
+OpSchema& OpSchema::InheritOnnxSchema(const std::string& onnx_schema_name) {
+  onnx_schema_ = onnx_schema_name;
+  return *this;
+}
+
 OpSchema& OpSchema::IdenticalTypeAndShape() {
   return TensorInferenceFunction(
       [](const OperatorDef&, const vector<TensorShape>& input_types) {

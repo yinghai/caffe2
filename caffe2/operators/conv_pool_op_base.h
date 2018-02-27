@@ -560,6 +560,12 @@ class ConvPoolOpBase : public Operator<Context> {
     return out;
   }
 
+  static std::vector<OnnxNodeProto> OnnxConversionBase(
+      const OperatorDef& def,
+      const std::unordered_map<std::string, TensorShape>& input_type_shape) {
+    return onnx::OnnxExporter().CreateConvPoolNode(def, input_type_shape);
+  }
+
   static vector<TensorShape> TensorInferenceForConv(
       const OperatorDef& def,
       const vector<TensorShape>& in) {

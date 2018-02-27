@@ -1385,6 +1385,38 @@ void addGlobalMethods(py::module& m) {
             return "";
           }
         });
+  m.def("support_onnx_export", [](const std::string& op) -> bool {
+    const OpSchema* schema = caffe2::OpSchemaRegistry::Schema(op);
+    if (!schema) {
+      return false;
+    }
+    return !schema->onnx_schema().empty();
+  });
+  m.def(
+      "export_to_onnx",
+      [](const py::bytes& c2op,
+         const std::unordered_map<std::string, std::vector<int>>& shapes)
+          -> std::vector<py::bytes> {
+        OperatorDef op;
+        CAFFE_ENFORCE(
+            ParseProtobufFromLargeString(c2op.cast<std::string>(), &op));
+        const auto& type = op.type();
+        const OpSchema* schema = caffe2::OpSchemaRegistry::Schema(type);
+        CAFFE_ENFORCE(schema);
+        std::unordered_map<std::string, TensorShape> tensor_shapes;
+        for (const auto& it: shapes) {
+          tensor_shapes.emplace(
+              it.first, CreateTensorShape(it.second, TensorProto::FLOAT));
+        }
+        auto node_protos = schema->ConvertToOnnx(op, tensor_shapes);
+        std::vector<py::bytes> ret;
+        for (const auto& node : node_protos) {
+          std::string out;
+          node.SerializeToString(&out);
+          ret.emplace_back(py::bytes(out));
+        }
+        return ret;
+      });
 
 #define CAFFE2_CPU_FEATURE_SUPPORT(feature) \
   m.def("builtin_cpu_supports_" #feature, []() { return GetCpuId().feature(); })

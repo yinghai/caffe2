@@ -32,7 +32,8 @@ Split a tensor into a list of tensors, along the specified
 'axis'. The lengths of the split can be specified using argument 'axis' or
 optional second input blob to the operator. Otherwise, the tensor is split
 to equal sized parts.
-)DOC");
+)DOC")
+    .InheritOnnxSchema("Split");
 
 namespace {
 OpSchema::Cost CostInferenceForConcat(
