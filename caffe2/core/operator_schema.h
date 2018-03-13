@@ -30,7 +30,6 @@
 #include "caffe2/core/registry.h"
 #include "caffe2/proto/caffe2.pb.h"
 #include "onnx/onnx_pb.h"
-#include "caffe2/onnx/onnx_exporter.h"
 
 namespace caffe2 {
 
@@ -392,6 +391,10 @@ class OpSchema {
   }
 
  private:
+  static std::vector<OnnxNodeProto> OnnxConversionCommon(
+      const OperatorDef& def,
+      const std::unordered_map<std::string, TensorShape>&);
+
   string file_;
   string doc_;
   string onnx_schema_;
@@ -429,10 +432,7 @@ class OpSchema {
         return out;
       };
   OnnxConversionFunctionType onnx_conversion_function_ =
-      [](const OperatorDef& def,
-         const std::unordered_map<std::string, TensorShape>&) {
-        return onnx::OnnxExporter().CommonCaffe2OpToOnnxNode(def);
-      };
+      OnnxConversionFunctionType(OnnxConversionCommon);
   std::unique_ptr<CostInferenceFunctionType> cost_inference_function_ = nullptr;
   DeviceInferenceFunctionType device_inference_function_ =
       [](const OperatorDef& def) {

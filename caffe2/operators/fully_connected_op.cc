@@ -17,6 +17,7 @@
 #include <functional>
 
 #include "caffe2/operators/fully_connected_op.h"
+#include "caffe2/onnx/onnx_exporter.h"
 
 namespace caffe2 {
 

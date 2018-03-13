@@ -15,6 +15,7 @@
  */
 
 #pragma once
+
 #include "caffe2/proto/caffe2.pb.h"
 #include "onnx/onnx_pb.h"
 
@@ -24,11 +25,14 @@
 
 namespace caffe2 {
 namespace onnx {
+
+namespace {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::GraphProto;
 using ONNX_NAMESPACE::ModelProto;
 using ONNX_NAMESPACE::NodeProto;
 using ONNX_NAMESPACE::TensorProto;
+} // namespace
 
 class OnnxExporter {
  public:

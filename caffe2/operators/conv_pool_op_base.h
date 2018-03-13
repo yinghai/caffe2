@@ -22,6 +22,7 @@
 #include "caffe2/core/context.h"
 #include "caffe2/core/logging.h"
 #include "caffe2/core/operator.h"
+#include "caffe2/onnx/onnx_exporter.h"
 #include "caffe2/proto/caffe2_legacy.pb.h"
 #include "caffe2/utils/math.h"
 

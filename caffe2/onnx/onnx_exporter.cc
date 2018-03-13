@@ -275,7 +275,7 @@ std::vector<NodeProto> OnnxExporter::CreateConvPoolNode(
                 << std::endl;
       auto* pads_attr = attrs.at("pads").mutable_ints();
       auto& strides_attr = attrs.at("strides").ints();
-      auto& kernel_shape_attr = attrs.at("kernal_shape").ints();
+      auto& kernel_shape_attr = attrs.at("kernel_shape").ints();
       for (int i = 0; i < 2; ++i) {
         int64_t tmp = output_size.dims(i + 2) * strides_attr.Get(i) -
             pads_attr->Get(i) - 1 + kernel_shape_attr.Get(i) -

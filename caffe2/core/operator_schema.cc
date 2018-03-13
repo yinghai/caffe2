@@ -15,8 +15,8 @@
  */
 
 #include "caffe2/core/operator_schema.h"
-
 #include "caffe2/core/logging.h"
+#include "caffe2/onnx/onnx_exporter.h"
 
 namespace caffe2 {
 
@@ -236,6 +236,12 @@ OpSchema& OpSchema::IdenticalTypeAndShapeOfInput(int idx) {
         out[0] = input_types[idx];
         return out;
       });
+}
+
+std::vector<OnnxNodeProto> OpSchema::OnnxConversionCommon(
+    const OperatorDef& def,
+    const std::unordered_map<std::string, TensorShape>&) {
+  return onnx::OnnxExporter().CommonCaffe2OpToOnnxNode(def);
 }
 
 OpSchema& OpSchema::IdenticalTypeAndShapeOfInputDim(int idx, int dim) {

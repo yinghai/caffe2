@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend_rep.h"
+#include "caffe2/onnx/backend_rep.h"
+#include "caffe2/onnx/device.h"
 #include "caffe2/proto/caffe2.pb.h"
-#include "device.h"
 #include "onnx/onnx_pb.h"
 
 #include <google/protobuf/text_format.h>
@@ -13,11 +13,13 @@
 
 namespace caffe2 { namespace onnx {
 
+namespace {
 using ONNX_NAMESPACE::AttributeProto;
-using ONNX_NAMESPACE::NodeProto;
 using ONNX_NAMESPACE::GraphProto;
 using ONNX_NAMESPACE::ModelProto;
+using ONNX_NAMESPACE::NodeProto;
 using ONNX_NAMESPACE::TensorProto;
+} // namespace
 
 struct Caffe2Ops {
   ::google::protobuf::RepeatedPtrField<caffe2::OperatorDef> init_ops;
