@@ -390,16 +390,6 @@ class Caffe2Frontend(object):
             return nodes
         elif op_def.type in cls._special_operators:
             translator = getattr(cls, cls._special_operators[op_def.type])
-
-        elif C.support_onnx_export(op_def.type):
-            shape_list = list(shapes.values())
-            node_strs = C.export_to_onnx(op_def.SerializeToString(), shapes)
-            nodes = []
-            for s in node_strs:
-                node = NodeProto()
-                node.ParseFromString(s)
-                nodes.append(node)
-            return nodes
         else:
             translator = cls._common_caffe2_op_to_onnx_node
         nodes = translator(op_def, shapes)
