@@ -360,6 +360,9 @@ if(USE_CUDA)
     # design reason (it adds CUDA_LIBRARIES itself).
     set(Caffe2_PUBLIC_CUDA_DEPENDENCY_LIBS
         caffe2::cuda caffe2::curand caffe2::cublas caffe2::cudnn caffe2::nvrtc)
+    if(USE_TENSORRT) 
+      list(APPEND Caffe2_PUBLIC_CUDA_DEPENDENCY_LIBS caffe2::tensorrt) 
+    endif()
   else()
     message(WARNING
         "Not compiling with CUDA. Suppress this warning with "
