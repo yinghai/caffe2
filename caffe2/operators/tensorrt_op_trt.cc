@@ -38,12 +38,13 @@ inline std::shared_ptr<T> InferObject(T* obj) {
   return std::shared_ptr<T>(obj, InferDeleter());
 }
 
+// Note that input of trt tensor is in CHW format, while our tensor is NCHW
 bool CheckDims(const nvinfer1::Dims& nv_dims, const std::vector<TIndex>& c2_dims) {
-  if (nv_dims.nbDims != c2_dims.size()) {
+  if (nv_dims.nbDims + 1 != c2_dims.size()) {
     return false;
   }
   for (int i = 0; i < c2_dims.size(); ++i) {
-    if (nv_dims.d[i] != c2_dims[i]) {
+    if (nv_dims.d[i + 1] != c2_dims[i]) {
       return false;
     }
   }
