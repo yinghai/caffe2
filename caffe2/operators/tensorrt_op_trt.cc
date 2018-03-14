@@ -43,8 +43,8 @@ bool CheckDims(const nvinfer1::Dims& nv_dims, const std::vector<TIndex>& c2_dims
   if (nv_dims.nbDims + 1 != c2_dims.size()) {
     return false;
   }
-  for (int i = 0; i < c2_dims.size(); ++i) {
-    if (nv_dims.d[i + 1] != c2_dims[i]) {
+  for (int i = 0; i < nv_dims.nbDims; ++i) {
+    if (nv_dims.d[i] != c2_dims[i + 1]) {
       return false;
     }
   }
@@ -80,12 +80,30 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
   std::unordered_map<std::string, int> outputs;
   CAFFE_ENFORCE(operator_def.input_size() == InputSize());
   CAFFE_ENFORCE(operator_def.output_size() == OutputSize());
+  int N = 0;
+  bool first = true;
   for (int i = 0; i < operator_def.input_size(); ++i) {
     inputs.emplace(operator_def.input(i), i);
+    // Decide input batch size
+    const auto& input_tensor = Input(i);
+    const auto& tensor_dims = input_tensor.dims();
+    // We need NCHW format
+    CAFFE_ENFORCE(tensor_dims.size() == 4);
+    if (first) {
+      N = tensor_dims.front();
+      first = false;
+    } else {
+      CAFFE_ENFORCE(
+          N == tensor_dims.front(), "Mismatched batch size in input tensors");
+    }
   }
+  CAFFE_ENFORCE(N <= batch_size_, "Batch size is too large");
+  batch_size_ = N;
+
   for (int i = 0; i < operator_def.output_size(); ++i) {
     outputs.emplace(operator_def.output(i), i);
   }
+
 
   int num_bindings = trt_engine_->getNbBindings();
   CAFFE_ENFORCE(num_bindings == InputSize() + OutputSize());
@@ -105,6 +123,7 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
       CAFFE_ENFORCE(it != outputs.end());
       auto* output_tensor = Output(it->second);
       std::vector<TIndex> tensor_dims;
+      tensor_dims.push_back(N);
       for (int i = 0; i < dims.nbDims; ++i) {
         tensor_dims.push_back(dims.d[i]);
       }
