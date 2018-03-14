@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "caffe2/core/common.h"
 #include "caffe2/proto/caffe2.pb.h"
 #include "onnx/onnx_pb.h"
 
