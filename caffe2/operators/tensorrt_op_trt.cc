@@ -78,13 +78,39 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
   // match and bind the input/output
   std::unordered_map<std::string, int> inputs;
   std::unordered_map<std::string, int> outputs;
-  CAFFE_ENFORCE(operator_def.input_size() == InputSize());
-  CAFFE_ENFORCE(operator_def.output_size() == OutputSize());
-  int N = 0;
-  bool first = true;
   for (int i = 0; i < operator_def.input_size(); ++i) {
     inputs.emplace(operator_def.input(i), i);
-    // Decide input batch size
+  }
+  for (int i = 0; i < operator_def.output_size(); ++i) {
+    outputs.emplace(operator_def.output(i), i);
+  }
+
+
+  int num_bindings = trt_engine_->getNbBindings();
+  CAFFE_ENFORCE(num_bindings == InputSize() + OutputSize());
+  for (int b = 0; b < num_bindings; ++b) {
+    const auto& name = trt_engine_->getBindingName(b);
+    nv_dims_.push_back(trt_engine_->getBindingDimensions(b));
+    if (trt_engine_->bindingIsInput(b)) {
+      const auto it = inputs.find(name);
+      CAFFE_ENFORCE(it != inputs.end());
+      binding_hints_.emplace_back(it->second, true);
+    } else {
+      const auto it = outputs.find(name);
+      CAFFE_ENFORCE(it != outputs.end());
+      binding_hints_.emplace_back(it->second, false);
+    }
+  }
+
+  trt_executor_ = InferObject(trt_engine_->createExecutionContext());
+}
+
+bool TensorRTOp::RunOnDevice() {
+  CAFFE_ENFORCE(trt_executor_);
+  // Decide input batch size
+  int N = 0;
+  bool first = true;
+  for (int i = 0; i < InputSize(); ++i) {
     const auto& input_tensor = Input(i);
     const auto& tensor_dims = input_tensor.dims();
     // We need NCHW format
@@ -100,28 +126,22 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
   CAFFE_ENFORCE(N <= batch_size_, "Batch size is too large");
   batch_size_ = N;
 
-  for (int i = 0; i < operator_def.output_size(); ++i) {
-    outputs.emplace(operator_def.output(i), i);
-  }
-
-
-  int num_bindings = trt_engine_->getNbBindings();
-  CAFFE_ENFORCE(num_bindings == InputSize() + OutputSize());
-  for (int b = 0; b < num_bindings; ++b) {
-    nvinfer1::Dims dims = trt_engine_->getBindingDimensions(b);
-    const auto& name = trt_engine_->getBindingName(b);
-    if (trt_engine_->bindingIsInput(b)) {
-      const auto it = inputs.find(name);
-      CAFFE_ENFORCE(it != inputs.end());
-      const auto& input_tensor = Input(it->second);
+  // We need to do the binding at RunOnDevice time because we only know the
+  // exact shapes of the tensors now
+  bindings_.clear();
+  int b = 0;
+  for (const auto& p : binding_hints_) {
+    const auto& dims = nv_dims_[b++];
+    if (p.second) {
+      // input, check input dimensions
+      const auto& input_tensor = Input(p.first);
       const float* input_data = input_tensor.data<float>();
       const auto& tensor_dims = input_tensor.dims();
       CAFFE_ENFORCE(CheckDims(dims, tensor_dims));
       bindings_.push_back((void*)(input_data));
     } else {
-      const auto it = outputs.find(name);
-      CAFFE_ENFORCE(it != outputs.end());
-      auto* output_tensor = Output(it->second);
+      // output, we need to allocate the output tensor
+      auto* output_tensor = Output(p.first);
       std::vector<TIndex> tensor_dims;
       tensor_dims.push_back(N);
       for (int i = 0; i < dims.nbDims; ++i) {
@@ -133,11 +153,6 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
     }
   }
 
-  trt_executor_ = InferObject(trt_engine_->createExecutionContext());
-}
-
-bool TensorRTOp::RunOnDevice() {
-  CAFFE_ENFORCE(trt_executor_);
   CAFFE_ENFORCE(bindings_.size() > 0);
   return trt_executor_->execute(batch_size_, &bindings_[0]);
 }
