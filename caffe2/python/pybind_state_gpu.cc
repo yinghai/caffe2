@@ -67,13 +67,17 @@ void addCUDAGlobalMethods(py::module& m) {
     obj["totalGlobalMem"] = py::cast(prop.totalGlobalMem);
     return obj;
   });
-  m.def("onnx_to_trt_op", [](const py::bytes& onnx_model_str) -> py::bytes {
-    TensorRTTransformer t;
-    auto op_def = t.BuildTrtOp(onnx_model_str.cast<std::string>());
-    std::string out;
-    op_def.SerializeToString(&out);
-    return py::bytes(out);
-  });
+  m.def(
+      "onnx_to_trt_op",
+      [](const py::bytes& onnx_model_str,
+         const std::vector<std::string>& inputs,
+         const std::vector<std::string>& outputs) -> py::bytes {
+        TensorRTTransformer t;
+        auto op_def = t.BuildTrtOp(onnx_model_str.cast<std::string>(), inputs, outputs);
+        std::string out;
+        op_def.SerializeToString(&out);
+        return py::bytes(out);
+      });
 };
 
 void addCUDAObjectMethods(py::module& m) {

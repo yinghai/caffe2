@@ -24,7 +24,11 @@ namespace caffe2 {
 
   class TensorRTTransformer {
     public:
-      OperatorDef BuildTrtOp(const std::string& onnx_model_str);
+     OperatorDef BuildTrtOp(
+         const std::string& onnx_model_str,
+         const std::vector<std::string>& inputs,
+         const std::vector<std::string>& outputs);
+
     private:
       size_t max_batch_size_{50};
       size_t max_workspace_size_{1024*1024*2};

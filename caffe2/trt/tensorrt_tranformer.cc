@@ -24,8 +24,19 @@
 
 namespace caffe2 {
 
-OperatorDef TensorRTTransformer::BuildTrtOp(const std::string& onnx_model_str) {
+OperatorDef TensorRTTransformer::BuildTrtOp(
+    const std::string& onnx_model_str,
+    const std::vector<std::string>& inputs,
+    const std::vector<std::string>& outputs) {
   OperatorDef op;
+  op.set_type("TensorRT");
+  for (const auto& i: inputs) {
+    op.add_input(i);
+  }
+  for (const auto& o: outputs) {
+    op.add_output(o);
+  }
+
   TrtLogger logger;
   auto trt_builder = InferObject(nvinfer1::createInferBuilder(logger));
   auto trt_network = InferObject(trt_builder->createNetwork());
@@ -45,13 +56,16 @@ OperatorDef TensorRTTransformer::BuildTrtOp(const std::string& onnx_model_str) {
 
   auto* serialized_engine_arg = op.add_arg();
   serialized_engine_arg->set_s("");
+  serialized_engine_arg->set_name("serialized_engine");
   auto* s = serialized_engine_arg->mutable_s();
   s->assign((char*)engine_plan->data(), engine_plan->size());
 
   auto* max_batch_size_arg = op.add_arg();
+  max_batch_size_arg->set_name("max_batch_size");
   max_batch_size_arg->set_i(max_batch_size_);
 
   auto* verbosity_arg = op.add_arg();
+  verbosity_arg->set_name("log_verbosity");
   verbosity_arg->set_i(verbosity_);
 
   return op;

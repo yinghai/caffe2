@@ -15,6 +15,7 @@
  */
 
 #include "caffe2/operators/tensorrt_op_trt.h"
+#include "caffe2/core/logging.h"
 
 #include <unordered_map>
 
@@ -25,6 +26,17 @@ namespace {
 bool CheckDims(
     const nvinfer1::Dims& nv_dims,
     const std::vector<TIndex>& c2_dims) {
+  std::cout << "trt_dims: ";
+  for (int i = 0; i < nv_dims.nbDims; ++i) {
+    std::cout << nv_dims.d[i] << ",";
+  }
+  std::cout << std::endl;
+  std::cout << "c2_dims: ";
+  for (int i = 0; i < c2_dims.size(); ++i) {
+    std::cout << c2_dims[i] << ",";
+  }
+  std::cout << std::endl;
+
   if (nv_dims.nbDims + 1 != c2_dims.size()) {
     return false;
   }
@@ -45,7 +57,7 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
     : Operator<CUDAContext>(operator_def, ws),
       logger_((nvinfer1::ILogger::Severity)(
           OperatorBase::GetSingleArgument<int>("log_verbosity", 2))),
-      batch_size_(OperatorBase::GetSingleArgument<int>("batch_size", 1)) {
+      batch_size_(OperatorBase::GetSingleArgument<int>("max_batch_size", 1)) {
   {
     auto engine_string =
         OperatorBase::GetSingleArgument<std::string>("serialized_engine", "");
@@ -65,20 +77,22 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
   std::unordered_map<std::string, int> outputs;
   for (int i = 0; i < operator_def.input_size(); ++i) {
     inputs.emplace(operator_def.input(i), i);
+    std::cout << "Adding Input: " << operator_def.input(i) << std::endl;
   }
   for (int i = 0; i < operator_def.output_size(); ++i) {
     outputs.emplace(operator_def.output(i), i);
+    std::cout << "Adding Output: " << operator_def.output(i) << std::endl;
   }
 
 
   int num_bindings = trt_engine_->getNbBindings();
-  CAFFE_ENFORCE(num_bindings == InputSize() + OutputSize());
   for (int b = 0; b < num_bindings; ++b) {
     const auto& name = trt_engine_->getBindingName(b);
     nv_dims_.push_back(trt_engine_->getBindingDimensions(b));
     if (trt_engine_->bindingIsInput(b)) {
+      std::cout << "Checking TRT input: " << name << std::endl;
       const auto it = inputs.find(name);
-      CAFFE_ENFORCE(it != inputs.end());
+      CAFFE_ENFORCE(it != inputs.end(), MakeString("Cannot find trt input: ", name));
       binding_hints_.emplace_back(it->second, true);
     } else {
       const auto it = outputs.find(name);
@@ -98,8 +112,6 @@ bool TensorRTOp::RunOnDevice() {
   for (int i = 0; i < InputSize(); ++i) {
     const auto& input_tensor = Input(i);
     const auto& tensor_dims = input_tensor.dims();
-    // We need NCHW format
-    CAFFE_ENFORCE(tensor_dims.size() == 4);
     if (first) {
       N = tensor_dims.front();
       first = false;
@@ -116,7 +128,7 @@ bool TensorRTOp::RunOnDevice() {
   bindings_.clear();
   int b = 0;
   for (const auto& p : binding_hints_) {
-    const auto& dims = nv_dims_[b++];
+    const auto& dims = trt_engine_->getBindingDimensions(b++); //nv_dims_[b++];
     if (p.second) {
       // input, check input dimensions
       const auto& input_tensor = Input(p.first);
@@ -138,7 +150,7 @@ bool TensorRTOp::RunOnDevice() {
     }
   }
 
-  CAFFE_ENFORCE(bindings_.size() > 0);
+  CAFFE_ENFORCE(bindings_.size() == InputSize() + OutputSize());
   return trt_executor_->execute(batch_size_, &bindings_[0]);
 }
 
