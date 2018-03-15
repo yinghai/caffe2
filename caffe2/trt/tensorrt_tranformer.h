@@ -27,7 +27,7 @@ namespace caffe2 {
       OperatorDef BuildTrtOp(const std::string& onnx_model_str);
     private:
       size_t max_batch_size_{50};
-      size_t max_workspace_size_{2014*1024*2};
+      size_t max_workspace_size_{1024*1024*2};
       int verbosity_{2};
       bool debug_builder_{true};
   };

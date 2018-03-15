@@ -29,6 +29,7 @@
 #include "caffe2/core/common_cudnn.h"
 #include "caffe2/core/context_gpu.h"
 #include "caffe2/operators/operator_fallback_gpu.h"
+#include "caffe2/trt/tensorrt_tranformer.h"
 
 namespace caffe2 {
 namespace python {
@@ -65,6 +66,13 @@ void addCUDAGlobalMethods(py::module& m) {
     obj["minor"] = py::cast(prop.minor);
     obj["totalGlobalMem"] = py::cast(prop.totalGlobalMem);
     return obj;
+  });
+  m.def("onnx_to_trt_op", [](const py::bytes& onnx_model_str) -> py::bytes {
+    TensorRTTransformer t;
+    auto op_def = t.BuildTrtOp(onnx_model_str.cast<std::string>());
+    std::string out;
+    op_def.SerializeToString(&out);
+    return py::bytes(out);
   });
 };
 
