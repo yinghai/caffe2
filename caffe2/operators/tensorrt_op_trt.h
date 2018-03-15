@@ -19,39 +19,13 @@
 
 #include "caffe2/core/context_gpu.h"
 #include "caffe2/core/operator.h"
+#include "caffe2/trt/trt_utils.h"
 
 #include <NvInfer.h>
 #include <iostream>
 #include <memory>
 
 namespace caffe2 {
-
-// Logger for GIE info/warning/errors
-class TrtLogger : public nvinfer1::ILogger {
-  using nvinfer1::ILogger::Severity;
-
- public:
-  TrtLogger(
-      Severity verbosity = Severity::kWARNING,
-      std::ostream& ostream = std::cout)
-      : _verbosity(verbosity), _ostream(&ostream) {}
-  void log(Severity severity, const char* msg) override {
-    if (severity <= _verbosity) {
-      std::string sevstr =
-          (severity == Severity::kINTERNAL_ERROR
-               ? "    BUG"
-               : severity == Severity::kERROR ? "  ERROR"
-                                              : severity == Severity::kWARNING
-                       ? "WARNING"
-                       : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
-      (*_ostream) << "[" << sevstr << "] " << msg << std::endl;
-    }
-  }
-
- private:
-  Severity _verbosity;
-  std::ostream* _ostream;
-};
 
 class TensorRTOp final : public Operator<CUDAContext> {
  public:

@@ -21,25 +21,10 @@
 namespace caffe2 {
 
 namespace {
-struct InferDeleter {
-  template <typename T>
-  void operator()(T* obj) const {
-    if (obj) {
-      obj->destroy();
-    }
-  }
-};
-
-template <typename T>
-inline std::shared_ptr<T> InferObject(T* obj) {
-  if (!obj) {
-    CAFFE_THROW("Failed to create TensorRt object");
-  }
-  return std::shared_ptr<T>(obj, InferDeleter());
-}
-
 // Note that input of trt tensor is in CHW format, while our tensor is NCHW
-bool CheckDims(const nvinfer1::Dims& nv_dims, const std::vector<TIndex>& c2_dims) {
+bool CheckDims(
+    const nvinfer1::Dims& nv_dims,
+    const std::vector<TIndex>& c2_dims) {
   if (nv_dims.nbDims + 1 != c2_dims.size()) {
     return false;
   }
@@ -59,7 +44,7 @@ bool CheckDims(const nvinfer1::Dims& nv_dims, const std::vector<TIndex>& c2_dims
 TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
     : Operator<CUDAContext>(operator_def, ws),
       logger_((nvinfer1::ILogger::Severity)(
-          OperatorBase::GetSingleArgument<int>("log_verbosity", 0))),
+          OperatorBase::GetSingleArgument<int>("log_verbosity", 2))),
       batch_size_(OperatorBase::GetSingleArgument<int>("batch_size", 1)) {
   {
     auto engine_string =
