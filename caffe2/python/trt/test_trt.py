@@ -44,7 +44,7 @@ def test_relu_graph():
     #print("Onnx Model: {}".format(model_def))
     op_inputs = [x.name for x in graph_def.input]
     op_outputs = [x.name for x in graph_def.output]
-    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), op_inputs, op_outputs)
+    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), {})
     op = caffe2_pb2.OperatorDef()
     op.ParseFromString(trt_str)
     device_option = core.DeviceOption(caffe2_pb2.CUDA, 0)
@@ -60,6 +60,33 @@ def test_relu_graph():
     print("{}".format(Y_trt))
     np.testing.assert_almost_equal(Y_c2, Y_trt)
 
+def test_resnet50():
+    input_blob_dims = (1, 3, 224, 224)
+    model_def = onnx.load('/home/yinghai/.onnx/models/resnet50/model.onnx')
+    op_inputs = [x.name for x in model_def.graph.input]
+    op_outputs = [x.name for x in model_def.graph.output]
+    print("Inputs: {}".format(op_inputs))
+    print("Outputs: {}".format(op_outputs))
+    n, c, h, w = input_blob_dims
+    data = np.random.randn(n, c, h, w).astype(np.float32)
+    Y_c2 = c2.run_model(model_def, {op_inputs[0]: data})
+    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), {})
+    op = caffe2_pb2.OperatorDef()
+    op.ParseFromString(trt_str)
+    device_option = core.DeviceOption(caffe2_pb2.CUDA, 0)
+    op.device_option.CopyFrom(device_option)
+    print("Output shapes: {}".format(model_def.graph.output))
+    Y_trt = None
+    with Workspace(), core.DeviceScope(device_option):  # temporary!
+        workspace.FeedBlob(op_inputs[0], data)
+        workspace.RunOperatorsOnce([op])
+        output_values = [workspace.FetchBlob(name) for name in op_outputs]
+        Y_trt = namedtupledict('Outputs', op_outputs)(*output_values)
+    #print("{}".format(Y_c2))
+    #print("{}".format(Y_trt))
+    np.testing.assert_almost_equal(Y_c2, Y_trt)
+    #print("{}".format(op))
 
 if __name__ == '__main__':
     test_relu_graph()
+    test_resnet50()

@@ -70,10 +70,11 @@ void addCUDAGlobalMethods(py::module& m) {
   m.def(
       "onnx_to_trt_op",
       [](const py::bytes& onnx_model_str,
-         const std::vector<std::string>& inputs,
-         const std::vector<std::string>& outputs) -> py::bytes {
+         const std::unordered_map<std::string, std::vector<int>>&
+             output_size_hints) -> py::bytes {
         TensorRTTransformer t;
-        auto op_def = t.BuildTrtOp(onnx_model_str.cast<std::string>(), inputs, outputs);
+        auto op_def =
+            t.BuildTrtOp(onnx_model_str.cast<std::string>(), output_size_hints);
         std::string out;
         op_def.SerializeToString(&out);
         return py::bytes(out);

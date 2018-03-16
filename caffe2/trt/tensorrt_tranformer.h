@@ -18,7 +18,9 @@
 
 #include "caffe2/core/common.h"
 #include "caffe2/proto/caffe2.pb.h"
+
 #include <string>
+#include <unordered_map>
 
 namespace caffe2 {
 
@@ -26,8 +28,8 @@ namespace caffe2 {
     public:
      OperatorDef BuildTrtOp(
          const std::string& onnx_model_str,
-         const std::vector<std::string>& inputs,
-         const std::vector<std::string>& outputs);
+         const std::unordered_map<std::string, std::vector<int>>&
+             output_size_hints);
 
     private:
       size_t max_batch_size_{50};

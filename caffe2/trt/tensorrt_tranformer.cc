@@ -26,16 +26,10 @@ namespace caffe2 {
 
 OperatorDef TensorRTTransformer::BuildTrtOp(
     const std::string& onnx_model_str,
-    const std::vector<std::string>& inputs,
-    const std::vector<std::string>& outputs) {
+    const std::unordered_map<std::string, std::vector<int>>&
+        output_size_hints) {
   OperatorDef op;
   op.set_type("TensorRT");
-  for (const auto& i: inputs) {
-    op.add_input(i);
-  }
-  for (const auto& o: outputs) {
-    op.add_output(o);
-  }
 
   TrtLogger logger;
   auto trt_builder = InferObject(nvinfer1::createInferBuilder(logger));
@@ -52,6 +46,18 @@ OperatorDef TensorRTTransformer::BuildTrtOp(
   trt_builder->setDebugSync(debug_builder_);
   auto trt_engine =
       InferObject(trt_builder->buildCudaEngine(*trt_network.get()));
+
+  // Set up inputs/outputs
+  int num_bindings = trt_engine->getNbBindings();
+  for (int b = 0; b < num_bindings; ++b) {
+    const auto& name = trt_engine->getBindingName(b);
+    if (trt_engine->bindingIsInput(b)) {
+      op.add_input(name);
+    } else {
+      op.add_output(name);
+    }
+  }
+
   auto engine_plan = InferObject(trt_engine->serialize());
 
   auto* serialized_engine_arg = op.add_arg();
@@ -67,6 +73,20 @@ OperatorDef TensorRTTransformer::BuildTrtOp(
   auto* verbosity_arg = op.add_arg();
   verbosity_arg->set_name("log_verbosity");
   verbosity_arg->set_i(verbosity_);
+
+  auto* output_size_hints_arg = op.add_arg();
+  output_size_hints_arg->set_name("output_size_hints");
+  for(const auto& o: op.output()) {
+    const auto it = output_size_hints.find(o);
+    if (it != output_size_hints.end()) {
+      const auto& dims = it->second;
+      for (const auto& i : dims) {
+        output_size_hints_arg->add_ints(i);
+      }
+      // Add an extra -1 to indicate the end
+      output_size_hints_arg->add_ints(-1);
+    }
+  }
 
   return op;
 }

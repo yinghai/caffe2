@@ -116,11 +116,11 @@ bool TensorRTOp::RunOnDevice() {
       N = tensor_dims.front();
       first = false;
     } else {
-      CAFFE_ENFORCE(
-          N == tensor_dims.front(), "Mismatched batch size in input tensors");
+      CAFFE_ENFORCE_EQ(
+          N, tensor_dims.front(), "Mismatched batch size in input tensors");
     }
   }
-  CAFFE_ENFORCE(N <= batch_size_, "Batch size is too large");
+  CAFFE_ENFORCE_LE(N, batch_size_, "Batch size is too large");
   batch_size_ = N;
 
   // We need to do the binding at RunOnDevice time because we only know the
@@ -128,7 +128,7 @@ bool TensorRTOp::RunOnDevice() {
   bindings_.clear();
   int b = 0;
   for (const auto& p : binding_hints_) {
-    const auto& dims = trt_engine_->getBindingDimensions(b++); //nv_dims_[b++];
+    const auto& dims = nv_dims_[b++];
     if (p.second) {
       // input, check input dimensions
       const auto& input_tensor = Input(p.first);
