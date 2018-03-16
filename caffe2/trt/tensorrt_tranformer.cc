@@ -75,7 +75,9 @@ OperatorDef TensorRTTransformer::BuildTrtOp(
   verbosity_arg->set_i(verbosity_);
 
   auto* output_size_hints_arg = op.add_arg();
+  auto* output_size_names_arg = op.add_arg();
   output_size_hints_arg->set_name("output_size_hints");
+  output_size_names_arg->set_name("output_size_names");
   for(const auto& o: op.output()) {
     const auto it = output_size_hints.find(o);
     if (it != output_size_hints.end()) {
@@ -85,6 +87,7 @@ OperatorDef TensorRTTransformer::BuildTrtOp(
       }
       // Add an extra -1 to indicate the end
       output_size_hints_arg->add_ints(-1);
+      output_size_names_arg->add_strings(o);
     }
   }
 

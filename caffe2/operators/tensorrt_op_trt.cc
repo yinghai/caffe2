@@ -17,6 +17,7 @@
 #include "caffe2/operators/tensorrt_op_trt.h"
 #include "caffe2/core/logging.h"
 
+#include <numeric>
 #include <unordered_map>
 
 namespace caffe2 {
@@ -72,25 +73,40 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
     CAFFE_THROW("Cannot deserialize TensorRT engine!");
   }
 
-  // match and bind the input/output
   std::unordered_map<std::string, int> inputs;
   std::unordered_map<std::string, int> outputs;
   for (int i = 0; i < operator_def.input_size(); ++i) {
     inputs.emplace(operator_def.input(i), i);
-    std::cout << "Adding Input: " << operator_def.input(i) << std::endl;
+    VLOG(0) << "Adding Input: " << operator_def.input(i);
   }
   for (int i = 0; i < operator_def.output_size(); ++i) {
     outputs.emplace(operator_def.output(i), i);
-    std::cout << "Adding Output: " << operator_def.output(i) << std::endl;
+    VLOG(0) << "Adding Output: " << operator_def.output(i);
   }
 
+  // Set up the output size hints
+  std::vector<int> output_size_hints_encoded(
+      OperatorBase::GetRepeatedArgument<int>("output_size_hints"));
+  std::vector<std::string> output_size_names(
+      OperatorBase::GetRepeatedArgument<std::string>("output_size_names"));
+  int idx = 0;
+  for (const auto& oname : output_size_names) {
+    const auto it = outputs.find(oname);
+    if (it != outputs.end()) {
+      std::vector<TIndex> dims;
+      for (; idx < output_size_hints_encoded.size() && output_size_hints_encoded[idx] > 0; ++idx) {
+        dims.push_back(output_size_hints_encoded[idx]);
+      }
+      output_size_hints_.emplace(it->second, std::move(dims));
+    }
+  }
 
+  // match and bind the input/output
   int num_bindings = trt_engine_->getNbBindings();
   for (int b = 0; b < num_bindings; ++b) {
     const auto& name = trt_engine_->getBindingName(b);
     nv_dims_.push_back(trt_engine_->getBindingDimensions(b));
     if (trt_engine_->bindingIsInput(b)) {
-      std::cout << "Checking TRT input: " << name << std::endl;
       const auto it = inputs.find(name);
       CAFFE_ENFORCE(it != inputs.end(), MakeString("Cannot find trt input: ", name));
       binding_hints_.emplace_back(it->second, true);
@@ -102,6 +118,36 @@ TensorRTOp::TensorRTOp(const OperatorDef& operator_def, Workspace* ws)
   }
 
   trt_executor_ = InferObject(trt_engine_->createExecutionContext());
+}
+
+void TensorRTOp::MaybeAdjustOutputShape(int output_idx, std::vector<TIndex>* dims) {
+  const auto it = output_size_hints_.find(output_idx);
+  if (it != output_size_hints_.end()) {
+    const auto& dims_hint = it->second;
+    auto total_trt = std::accumulate(dims->begin(), dims->end(), (TIndex)(1), std::multiplies<TIndex>());
+    auto total_c2 = std::accumulate(dims_hint.begin(), dims_hint.end(), (TIndex)(1), std::multiplies<TIndex>());
+    if (total_c2 != total_trt) {
+      LOG(WARNING) << "The total size of TensorRT op output and hint don't match";
+      return;
+    }
+
+    bool identical_shape = true;
+    if (dims->size() != dims_hint.size()) {
+      identical_shape = false;
+    } else {
+      for (int i = 0; i < dims->size(); ++i) {
+        if((*dims)[i] != dims_hint[i]) {
+          identical_shape = false;
+          break;
+        }
+      }
+    }
+
+    // We conform to the output shape hints. NB: We might need an explicit reshape op for this
+    if (!identical_shape) {
+      *dims = dims_hint;
+    }
+  }
 }
 
 bool TensorRTOp::RunOnDevice() {
@@ -144,6 +190,13 @@ bool TensorRTOp::RunOnDevice() {
       for (int i = 0; i < dims.nbDims; ++i) {
         tensor_dims.push_back(dims.d[i]);
       }
+      MaybeAdjustOutputShape(p.first, &tensor_dims);
+      std::cout << "output_dims: ";
+      for (int i = 0; i < tensor_dims.size(); ++i) {
+        std::cout << tensor_dims[i] << ",";
+      }
+      std::cout << std::endl;
+
       output_tensor->Resize(tensor_dims);
       float* output_data = output_tensor->mutable_data<float>();
       bindings_.push_back((void*)(output_data));

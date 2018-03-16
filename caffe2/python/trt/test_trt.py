@@ -31,6 +31,14 @@ import caffe2.python._import_c_extension as C
 
 # Note that ONNX-TRT enforce an NCHW input!!!!
 
+def dim_values_to_list(dim_values):
+    return [x.dim_value for x in dim_values]
+
+def get_output_shapes(output_value_infos):
+    names = [x.name for x in output_value_infos]
+    shapes = [dim_values_to_list(x.type.tensor_type.shape.dim) for x in output_value_infos]
+    return dict(zip(names, shapes))
+
 def test_relu_graph():
     X = np.random.randn(1, 1, 3, 2).astype(np.float32)
     node_def = make_node("Relu", ["X"], ["Y"])
@@ -41,10 +49,10 @@ def test_relu_graph():
         inputs=[make_tensor_value_info("X", onnx.TensorProto.FLOAT, [1, 1, 3, 2])],
         outputs=[make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 1, 3, 2])])
     model_def = make_model(graph_def, producer_name='relu-test')
+    op_outputs = [x.name for x in model_def.graph.output]
     #print("Onnx Model: {}".format(model_def))
-    op_inputs = [x.name for x in graph_def.input]
-    op_outputs = [x.name for x in graph_def.output]
-    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), {})
+    get_output_shapes(graph_def.output)
+    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), get_output_shapes(graph_def.output))
     op = caffe2_pb2.OperatorDef()
     op.ParseFromString(trt_str)
     device_option = core.DeviceOption(caffe2_pb2.CUDA, 0)
@@ -56,8 +64,6 @@ def test_relu_graph():
         workspace.RunOperatorsOnce([op])
         output_values = [workspace.FetchBlob(name) for name in op_outputs]
         Y_trt = namedtupledict('Outputs', op_outputs)(*output_values)
-    print("{}".format(Y_c2))
-    print("{}".format(Y_trt))
     np.testing.assert_almost_equal(Y_c2, Y_trt)
 
 def test_resnet50():
@@ -70,12 +76,11 @@ def test_resnet50():
     n, c, h, w = input_blob_dims
     data = np.random.randn(n, c, h, w).astype(np.float32)
     Y_c2 = c2.run_model(model_def, {op_inputs[0]: data})
-    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), {})
+    trt_str = C.onnx_to_trt_op(model_def.SerializeToString(), get_output_shapes(model_def.graph.output))
     op = caffe2_pb2.OperatorDef()
     op.ParseFromString(trt_str)
     device_option = core.DeviceOption(caffe2_pb2.CUDA, 0)
     op.device_option.CopyFrom(device_option)
-    print("Output shapes: {}".format(model_def.graph.output))
     Y_trt = None
     with Workspace(), core.DeviceScope(device_option):  # temporary!
         workspace.FeedBlob(op_inputs[0], data)

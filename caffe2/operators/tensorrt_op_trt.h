@@ -24,6 +24,7 @@
 #include <NvInfer.h>
 #include <iostream>
 #include <memory>
+#include <unordered_map>
 
 namespace caffe2 {
 
@@ -35,11 +36,14 @@ class TensorRTOp final : public Operator<CUDAContext> {
   virtual ~TensorRTOp() noexcept {}
 
  private:
+  void MaybeAdjustOutputShape(int output_idx, std::vector<TIndex>* dims);
+
   TrtLogger logger_;
   int batch_size_;
   std::vector<void*> bindings_;
   std::vector<std::pair<int, bool>> binding_hints_;
   std::vector<nvinfer1::Dims> nv_dims_;
+  std::unordered_map<int, std::vector<TIndex>> output_size_hints_;
   std::shared_ptr<nvinfer1::ICudaEngine> trt_engine_{nullptr};
   std::shared_ptr<nvinfer1::IExecutionContext > trt_executor_{nullptr};
 };
