@@ -22,10 +22,14 @@ from caffe2.proto import caffe2_pb2
 from caffe2.python import core, workspace
 import onnx
 from onnx.helper import make_node, make_graph, make_tensor, make_tensor_value_info, make_model
+from caffe2.python.onnx.helper import c2_native_run_net, c2_native_run_op
 from onnx.backend.base import namedtupledict
 import caffe2.python.onnx.backend as c2
+import caffe2.python.onnx.frontend as c2_front
 from caffe2.python.onnx.workspace import Workspace
 import numpy as np
+import os.path
+import json
 
 import caffe2.python._import_c_extension as C
 
@@ -38,6 +42,18 @@ def get_output_shapes(output_value_infos):
     names = [x.name for x in output_value_infos]
     shapes = [dim_values_to_list(x.type.tensor_type.shape.dim) for x in output_value_infos]
     return dict(zip(names, shapes))
+
+def print_net(net):
+    for i in net.external_input:
+        print("Input: {}".format(i))
+    for i in net.external_output:
+        print("Output: {}".format(i))
+    for op in net.op:
+        print("Op {}".format(op.type))
+        for x in op.input:
+            print("  input: {}".format(x))
+        for y in op.output:
+            print("  output: {}".format(y))
 
 def test_relu_graph():
     X = np.random.randn(1, 1, 3, 2).astype(np.float32)
@@ -87,11 +103,102 @@ def test_resnet50():
         workspace.RunOperatorsOnce([op])
         output_values = [workspace.FetchBlob(name) for name in op_outputs]
         Y_trt = namedtupledict('Outputs', op_outputs)(*output_values)
-    #print("{}".format(Y_c2))
-    #print("{}".format(Y_trt))
     np.testing.assert_almost_equal(Y_c2, Y_trt)
-    #print("{}".format(op))
+
+def infer_shape(init_net, pred_net, inputs):
+    ws, outputs = c2_native_run_net(init_net, pred_net, inputs)
+    hints = {}
+    for op in pred_net.op:
+        for o in op.output:
+            if o not in hints:
+                blob = ws.FetchBlob(o)
+                if hasattr(blob, 'shape'):
+                    hints[o] = blob.shape
+        for i in op.input:
+            if i not in hints:
+                blob = ws.FetchBlob(i)
+                if hasattr(blob, 'shape'):
+                    hints[i] = blob.shape
+
+    #print("Shapes: {}".format(hints))
+    return hints
+
+def test_resnet50_cut():
+    init_net = caffe2_pb2.NetDef()
+    model_path = '/home/yinghai/.caffe2/models/resnet50/'
+    with open(os.path.join(model_path + 'init_net.pb'), 'rb') as f:
+        init_net.ParseFromString(f.read())
+    pred_net = caffe2_pb2.NetDef()
+    with open(os.path.join(model_path + 'predict_net.pb'), 'rb') as f:
+        pred_net.ParseFromString(f.read())
+    print("Loaded resnet model: {}, {}".format(init_net.name, pred_net.name))
+    c2_front.ssa_rewrite(pred_net, init_net, value_info=json.load(open(os.path.join(model_path, 'value_info.json'))))
+    input_blob_dims = (1, 3, 224, 224)
+    n, c, h, w = input_blob_dims
+    data = np.random.randn(n, c, h, w).astype(np.float32)
+    shape_hints = infer_shape(init_net, pred_net, {"gpu_0/data_0": data})
+    shape_hints["gpu_0/data_0"] = input_blob_dims
+
+    device_option = core.DeviceOption(caffe2_pb2.CUDA, 0)
+    init_net.device_option.CopyFrom(device_option)
+    pred_net.device_option.CopyFrom(device_option)
+    for op in pred_net.op:
+        op.device_option.CopyFrom(device_option)
+    net_outputs = pred_net.external_output
+    Y_c2 = None
+    print("init_net: {}, pred_net: {}".format(init_net.device_option, pred_net.device_option))
+    with Workspace(), core.DeviceScope(device_option):  # temporary!
+        workspace.FeedBlob("gpu_0/data_0", data)
+        workspace.RunNetOnce(init_net)
+        workspace.RunNetOnce(pred_net)
+        output_values = [workspace.FetchBlob(name) for name in net_outputs]
+        Y_c2 = namedtupledict('Outputs', net_outputs)(*output_values)
+
+    # Cutting the graph
+    init_net_str, pred_net_str = C.transform_trt(init_net.SerializeToString(), pred_net.SerializeToString(), shape_hints)
+    init_net_cut = caffe2_pb2.NetDef()
+    init_net_cut.ParseFromString(init_net_str)
+    pred_net_cut = caffe2_pb2.NetDef()
+    pred_net_cut.ParseFromString(pred_net_str)
+    del init_net_str, pred_net_str
+    print_net(pred_net_cut)
+    Y_trt = None
+    with Workspace(), core.DeviceScope(device_option):  # temporary!
+        workspace.FeedBlob("gpu_0/data_0", data)
+        workspace.RunNetOnce(init_net_cut)
+        workspace.RunNetOnce(pred_net_cut)
+        output_values = [workspace.FetchBlob(name) for name in net_outputs]
+        Y_trt = namedtupledict('Outputs', net_outputs)(*output_values)
+    np.testing.assert_almost_equal(Y_c2, Y_trt)
+
+def test_detectron():
+    init_net = caffe2_pb2.NetDef()
+    model_path = '/home/yinghai/.caffe2/models/detectron/e2e_faster_rcnn_R-50-C4_1x/'
+    with open(os.path.join(model_path + 'init_net.pb'), 'rb') as f:
+        init_net.ParseFromString(f.read())
+    pred_net = caffe2_pb2.NetDef()
+    with open(os.path.join(model_path + 'predict_net.pb'), 'rb') as f:
+        pred_net.ParseFromString(f.read())
+    print("Loaded detectron model: {}, {}".format(init_net.name, pred_net.name))
+    #c2_front.ssa_rewrite(pred_net, init_net, value_info=json.load(open(os.path.join(model_path, 'value_info.json'))))
+    input_blob_dims = (1, 3, 800, 800)
+    for i in pred_net.external_input:
+        print("Input: {}".format(i))
+    #for i in pred_net.external_output:
+    #    print("Output: {}".format(i))
+    #for op in pred_net.op:
+    #    print("Saw {}".format(op.type))
+    #    for x in op.input:
+    #        print("  input: {}".format(x))
+    #    for y in op.output:
+    #        print("  output: {}".format(y))
+    n, c, h, w = input_blob_dims
+    data = np.random.randn(n, c, h, w).astype(np.float32)
+    im_info = np.random.randn(n, 3).astype(np.float32)
+    ws, outputs = c2_native_run_net(init_net, pred_net, {"data":data, "im_info":im_info})
 
 if __name__ == '__main__':
-    test_relu_graph()
-    test_resnet50()
+    #test_relu_graph()
+    #test_resnet50()
+    test_resnet50_cut()
+    #test_detectron()
