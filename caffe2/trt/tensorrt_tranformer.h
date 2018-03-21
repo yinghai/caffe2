@@ -28,35 +28,11 @@
 
 namespace caffe2 {
   class TensorRTTransformer {
-    private:
-     enum class NodeType : std::int8_t {
-       OP = 0,
-       TENSOR = 1,
-       INPUT = 2,
-       OUTPUT = 3
-     };
-
-     struct NodeT {
-       NodeT(const std::string& n, NodeType t):name(n), type(t) {}
-       std::string name;
-       NodeType type;
-       std::vector<NodeT*> out_nodes;
-       const OperatorDef* op{nullptr};
-     };
-
-     struct GraphT {
-       std::unordered_map<std::string, NodeT> nodes;
-       std::vector<NodeT*> inputs;
-       std::vector<NodeT*> outputs;
-     };
-
-    public:
+   public:
      OperatorDef BuildTrtOp(
          const std::string& onnx_model_str,
          const std::unordered_map<std::string, std::vector<int>>&
              output_size_hints);
-
-     void LoadNets(const NetDef& init_net, const NetDef& pred_net);
 
      void TransformSimple(
          NetDef* init_net,
@@ -64,9 +40,6 @@ namespace caffe2 {
          const std::unordered_map<std::string, TensorShape>& shape_hints);
 
     private:
-      int LoadPredNet(const NetDef& net, int seq);
-      void LoadInitNet(const NetDef& net);
-
       void ClusterToTrtOp(
           const NetDef& init_net,
           const NetDef& pred_net,
@@ -81,6 +54,5 @@ namespace caffe2 {
       size_t max_workspace_size_{1024*1024*2};
       int verbosity_{2};
       bool debug_builder_{true};
-      std::unique_ptr<GraphT> g_{nullptr};
   };
 }

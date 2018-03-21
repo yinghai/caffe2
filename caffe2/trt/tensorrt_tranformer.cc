@@ -314,71 +314,6 @@ void TensorRTTransformer::ClusterToTrtOp(
   model->mutable_graph()->clear_node();
 }
 
-int TensorRTTransformer::LoadPredNet(const NetDef& net, int seq) {
-  int id = seq;
-  auto& nodes = g_->nodes;
-  auto& inputs = g_->inputs;
-  auto& outputs = g_->outputs;
-  for (const auto& input : net.external_input()) {
-    if (!nodes.count(input)) {
-      auto it = nodes.emplace(input, NodeT(input, NodeType::INPUT));
-      inputs.push_back(&(it.first->second));
-    }
-  }
-  for (const auto& output : net.external_output()) {
-    if (!nodes.count(output)) {
-      auto it = nodes.emplace(output, NodeT(output, NodeType::OUTPUT));
-      outputs.push_back(&it.first->second);
-    }
-  }
-  for (const auto& op : net.op()) {
-    std::string op_name = (op.has_name() && !op.name().empty())
-        ? op.name()
-        : MakeString("op_", id++);
-    auto it = nodes.emplace(op_name, NodeT(op_name, NodeType::OP));
-    CAFFE_ENFORCE(it.second);
-    auto& node = it.first->second;
-    node.op = &op;
-    for (const auto& op_input : op.input()) {
-      auto it2 = nodes.find(op_input);
-      if (it2 != nodes.end()) {
-        it2->second.out_nodes.push_back(&node);
-      } else {
-        // If new input, it must be a tensor as external inputs have already
-        // been added
-        auto it_w = nodes.emplace(op_input, NodeT(op_input, NodeType::TENSOR));
-        it_w.first->second.out_nodes.push_back(&node);
-      }
-    }
-    for (const auto& op_output : op.output()) {
-      auto it2 = nodes.find(op_output);
-      if (it2 != nodes.end()) {
-        node.out_nodes.push_back(&it2->second);
-      } else {
-        // If new output, it must be a tensor as external outputs have already
-        // been added
-        auto it_w =
-            nodes.emplace(op_output, NodeT(op_output, NodeType::TENSOR));
-        node.out_nodes.push_back(&it_w.first->second);
-      }
-    }
-  }
-  return id;
-}
-
-void TensorRTTransformer::LoadInitNet(const NetDef& net) {
-  auto& nodes = g_->nodes;
-  for (const auto& op : net.op()) {
-    CAFFE_ENFORCE(op.type().find("GivenTensor") == 0);
-    CAFFE_ENFORCE(op.type().rfind("Fill") == op.type().size() - 4);
-    CAFFE_ENFORCE(op.output_size() == 1);
-    for (const auto& op_output : op.output()) {
-      nodes.emplace(op_output, NodeT(op_output, NodeType::TENSOR));
-    }
-  }
-}
-
-
 // Simple transform. Asssume the nets were topologically sorted
 void TensorRTTransformer::TransformSimple(
     NetDef* init_net,
@@ -472,11 +407,4 @@ void TensorRTTransformer::TransformSimple(
   PruneWeights(*pred_net, init_net);
 }
 
-// NB: Input nets have to be in SSA form!
-void TensorRTTransformer::LoadNets(const NetDef& init_net, const NetDef& pred_net) {
-  g_ = caffe2::make_unique<GraphT>();
-
-  LoadInitNet(init_net);
-  int id = LoadPredNet(pred_net, 0);
-}
 }
