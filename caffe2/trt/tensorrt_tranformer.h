@@ -74,7 +74,7 @@ namespace caffe2 {
           int end,
           const std::unordered_set<std::string>& weights,
           const std::unordered_map<std::string, TensorShape>& shape_hints,
-          ONNX_NAMESPACE::ModelProto* model,
+          ::ONNX_NAMESPACE::ModelProto* model,
           std::vector<OperatorDef>* new_ops);
 
       size_t max_batch_size_{50};

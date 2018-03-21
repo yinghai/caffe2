@@ -123,6 +123,28 @@ def infer_shape(init_net, pred_net, inputs):
     #print("Shapes: {}".format(hints))
     return hints
 
+def add_head_tail(pred_net):
+    # Add head
+    head = caffe2_pb2.OperatorDef()
+    head.type = "Copy"
+    head.input.append("real_data_0")
+    head.output.append("gpu_0/data_0")
+    dummy = caffe2_pb2.NetDef()
+    dummy.op.extend(pred_net.op)
+    del pred_net.op[:]
+    pred_net.op.extend([head])
+    pred_net.op.extend(dummy.op)
+    pred_net.external_input[0] = "real_data_0"
+
+    # Add tail
+    tail = caffe2_pb2.OperatorDef()
+    tail.type = "Copy"
+    tail.input.append("gpu_0/softmax_1")
+    tail.output.append("real_softmax_1")
+    pred_net.op.extend([tail])
+    pred_net.external_output[0] = "real_softmax_1"
+    #print_net(pred_net)
+
 def test_resnet50_cut():
     init_net = caffe2_pb2.NetDef()
     model_path = '/home/yinghai/.caffe2/models/resnet50/'
@@ -133,11 +155,13 @@ def test_resnet50_cut():
         pred_net.ParseFromString(f.read())
     print("Loaded resnet model: {}, {}".format(init_net.name, pred_net.name))
     c2_front.ssa_rewrite(pred_net, init_net, value_info=json.load(open(os.path.join(model_path, 'value_info.json'))))
+    add_head_tail(pred_net)
     input_blob_dims = (1, 3, 224, 224)
     n, c, h, w = input_blob_dims
     data = np.random.randn(n, c, h, w).astype(np.float32)
-    shape_hints = infer_shape(init_net, pred_net, {"gpu_0/data_0": data})
-    shape_hints["gpu_0/data_0"] = input_blob_dims
+    input_name = "real_data_0"
+    shape_hints = infer_shape(init_net, pred_net, {input_name: data})
+    shape_hints[input_name] = input_blob_dims
 
     device_option = core.DeviceOption(caffe2_pb2.CUDA, 0)
     init_net.device_option.CopyFrom(device_option)
@@ -146,15 +170,14 @@ def test_resnet50_cut():
         op.device_option.CopyFrom(device_option)
     net_outputs = pred_net.external_output
     Y_c2 = None
-    print("init_net: {}, pred_net: {}".format(init_net.device_option, pred_net.device_option))
     with Workspace(), core.DeviceScope(device_option):  # temporary!
-        workspace.FeedBlob("gpu_0/data_0", data)
+        workspace.FeedBlob(input_name, data)
         workspace.RunNetOnce(init_net)
         workspace.RunNetOnce(pred_net)
         output_values = [workspace.FetchBlob(name) for name in net_outputs]
         Y_c2 = namedtupledict('Outputs', net_outputs)(*output_values)
 
-    # Cutting the graph
+    # Cut the graph
     init_net_str, pred_net_str = C.transform_trt(init_net.SerializeToString(), pred_net.SerializeToString(), shape_hints)
     init_net_cut = caffe2_pb2.NetDef()
     init_net_cut.ParseFromString(init_net_str)
@@ -164,7 +187,7 @@ def test_resnet50_cut():
     print_net(pred_net_cut)
     Y_trt = None
     with Workspace(), core.DeviceScope(device_option):  # temporary!
-        workspace.FeedBlob("gpu_0/data_0", data)
+        workspace.FeedBlob(input_name, data)
         workspace.RunNetOnce(init_net_cut)
         workspace.RunNetOnce(pred_net_cut)
         output_values = [workspace.FetchBlob(name) for name in net_outputs]
