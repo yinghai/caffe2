@@ -48,6 +48,8 @@ class OnnxExporter {
       const caffe2::OperatorDef& def,
       const std::unordered_map<std::string, caffe2::TensorShape>& shapes);
 
+  void InitOpToTensorProto(const caffe2::OperatorDef& def, TensorProto* tensor);
+
  private:
   // \brief Check black listed arguemnts where we won't pass down when
   // converting to ONNX node
